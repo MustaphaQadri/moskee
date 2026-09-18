@@ -1,0 +1,309 @@
+// Prisma schema for the school management app.
+// Prisma 7: datasource URL lives in prisma7.config.ts, client output is source
+// (TypeScript) and is gitignored — regenerate with `pnpm db:generate`.
+//
+// Data-model conventions:
+// - Every table has a cuid primary key plus `createdAt` / `updatedAt`.
+// - Domain models map to snake_case table names.
+// - Lookup/managed sets (rooms, levels, sessions) are their own tables.
+// - Teachers are `User` rows with `role = "teacher"` (no separate table).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth core tables
+// Field names/types mirror the Better Auth schema exactly (see AGENTS.md).
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  // Application role: "manager" | "teacher". Managed out-of-band (not via signup).
+  role          String   @default("teacher")
+  // Contact details (teachers are users with role = "teacher").
+  phone         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions        Session[]
+  accounts        Account[]
+  taughtClasses   SchoolClass[]    @relation("ClassTeacher")
+  studentComments StudentComment[]
+  guardianComments GuardianComment[]
+  classComments   ClassComment[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ---------------------------------------------------------------------------
+// School domain models
+// ---------------------------------------------------------------------------
+
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// A student. Guardians are linked many-to-many through StudentGuardian;
+// classes through Enrollment; comments through StudentComment.
+model Student {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  sex         Sex?
+  dateOfBirth DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guardians   StudentGuardian[]
+  enrollments Enrollment[]
+  comments    StudentComment[]
+
+  @@index([lastName, firstName])
+  @@map("students")
+}
+
+// A guardian (parent/carer). Can be responsible for several students.
+model Guardian {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  children StudentGuardian[]
+  comments GuardianComment[]
+
+  @@index([lastName, firstName])
+  @@map("guardians")
+}
+
+// Join table: student <-> guardian. `relation` and `isPrimary` describe the
+// link itself (a guardian may be "mother" to one child and "aunt" to another).
+model StudentGuardian {
+  id         String   @id @default(cuid())
+  studentId  String
+  guardianId String
+  // e.g. "mother", "father", "grandmother", "other"
+  relation   String?
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, guardianId])
+  @@index([guardianId])
+  @@map("student_guardians")
+}
+
+// Managed set of classrooms.
+model Room {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  capacity  Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classes SchoolClass[]
+
+  @@map("rooms")
+}
+
+// Managed set of levels (e.g. "Group 1", "Beginners").
+model Level {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classes SchoolClass[]
+
+  @@map("levels")
+}
+
+// Managed set of sessions. This is a weekend school: 3 sessions per day
+// (morning, noon, afternoon) on Saturday and Sunday => 6 possible sessions.
+// A class runs during one or more sessions (see SchoolClassSession).
+model ClassSession {
+  id        String   @id @default(cuid())
+  label     String   @unique // e.g. "Saturday morning"
+  day       String? // e.g. "Saturday"
+  period    String? // e.g. "morning" | "noon" | "afternoon"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classes SchoolClassSession[]
+
+  @@map("class_sessions")
+}
+
+model SchoolClass {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  levelId     String
+  roomId      String?
+  teacherId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  level       Level               @relation(fields: [levelId], references: [id], onDelete: Restrict)
+  room        Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  teacher     User?               @relation("ClassTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+  sessions    SchoolClassSession[]
+  enrollments Enrollment[]
+  comments    ClassComment[]
+
+  @@index([teacherId])
+  @@index([levelId])
+  @@index([roomId])
+  @@map("classes")
+}
+
+// Join table: class <-> session (a class can run in multiple sessions).
+model SchoolClassSession {
+  id        String   @id @default(cuid())
+  classId   String
+  sessionId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class   SchoolClass  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, sessionId])
+  @@index([sessionId])
+  @@map("class_session_links")
+}
+
+// Join table: student <-> class with enrollment dates and status.
+model Enrollment {
+  id        String    @id @default(cuid())
+  studentId String
+  classId   String
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+  // "active" | "withdrawn"
+  status    String    @default("active")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, classId])
+  @@index([classId])
+  @@map("enrollments")
+}
+
+// ---------------------------------------------------------------------------
+// Comments — one table per commented entity (normalized, real FKs).
+// `author` is the staff member (manager/teacher) who wrote the comment.
+// ---------------------------------------------------------------------------
+
+model StudentComment {
+  id        String   @id @default(cuid())
+  studentId String
+  authorId  String?
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([authorId])
+  @@map("student_comments")
+}
+
+model GuardianComment {
+  id         String   @id @default(cuid())
+  guardianId String
+  authorId   String?
+  body       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  author   User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([guardianId])
+  @@index([authorId])
+  @@map("guardian_comments")
+}
+
+model ClassComment {
+  id        String   @id @default(cuid())
+  classId   String
+  authorId  String?
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class  SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  author User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([classId])
+  @@index([authorId])
+  @@map("class_comments")
+}
