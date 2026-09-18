@@ -168,6 +168,63 @@ erDiagram
         timestamp updatedAt
     }
 
+    academic_years {
+        text id PK
+        text name UK "e.g. 2026-2027"
+        timestamp startDate
+        timestamp endDate
+        boolean isCurrent "at most one, enforced in app"
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    terms {
+        text id PK
+        text academicYearId FK,UK "unique per name and per sortOrder"
+        text name "Period 1"
+        integer sortOrder
+        timestamp startDate
+        timestamp endDate
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    subjects {
+        text id PK
+        text levelId FK,UK "unique per name"
+        text name "Math"
+        integer sortOrder
+        boolean isActive
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    attendance {
+        text id PK
+        text studentId FK,UK "unique per class+session+date"
+        text classId FK,UK "unique per student+session+date"
+        text sessionId FK,UK "unique per student+class+date"
+        timestamp date "DATE (UTC midnight)"
+        AttendanceStatus status "PRESENT | ABSENT | LATE | EXCUSED"
+        text note
+        text recordedById FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    grades {
+        text id PK
+        text studentId FK,UK "unique per subject+term"
+        text classId FK
+        text subjectId FK,UK "unique per student+term"
+        text termId FK,UK "unique per student+subject"
+        integer score "1..10 or null"
+        text remark
+        text recordedById FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     User ||--o{ Session : "authenticates via"
     User ||--o{ Account : "authenticates via"
     User |o--o{ classes : "teaches"
@@ -190,6 +247,19 @@ erDiagram
     students ||--o{ student_comments : "has"
     guardians ||--o{ guardian_comments : "has"
     classes ||--o{ class_comments : "has"
+
+    students ||--o{ attendance : "has"
+    classes ||--o{ attendance : "holds"
+    class_sessions ||--o{ attendance : "scheduled in"
+    User |o--o{ attendance : "records"
+
+    levels ||--o{ subjects : "offers"
+    academic_years ||--o{ terms : "contains"
+    terms ||--o{ grades : "assesses"
+    subjects ||--o{ grades : "graded in"
+    students ||--o{ grades : "earns"
+    classes ||--o{ grades : "records"
+    User |o--o{ grades : "records"
 ```
 
 ## Legend
@@ -200,8 +270,13 @@ erDiagram
 - Composite unique constraints (marked `UK` on each member column):
   `student_guardians (studentId, guardianId)`,
   `class_session_links (classId, sessionId)`,
-  `enrollments (studentId, classId)`.
-- `Sex` is a PostgreSQL enum: `MALE | FEMALE | OTHER`.
+  `enrollments (studentId, classId)`,
+  `attendance (studentId, classId, sessionId, date)`,
+  `terms (academicYearId, name)` and `(academicYearId, sortOrder)`,
+  `subjects (levelId, name)`,
+  `grades (studentId, subjectId, termId)`.
+- `Sex` is a PostgreSQL enum: `MALE | FEMALE | OTHER`; `AttendanceStatus` is
+  `PRESENT | ABSENT | LATE | EXCUSED`.
 - `_prisma_migrations` (Prisma's bookkeeping table) is omitted — infrastructure,
   not application data.
 

@@ -63,12 +63,16 @@ These differ from older versions and are the most common source of mistakes.
 ## Project structure
 
 ```
+docs/
+  domain-model.md      # domain entities, invariants, reports, gotchas
+  erd.md / erd.mmd     # entity relationship diagram
 prisma/
   schema.prisma        # auth tables + domain models
   seed.ts              # bootstraps the first manager
 prisma7.config.ts      # Prisma CLI config
 src/
   app/
+    actions/           # Server Actions (attendance, grades, lookups)
     layout.tsx         # MantineProvider + ColorSchemeScript
     page.tsx
     api/auth/[...all]/route.ts   # Better Auth handler
@@ -78,9 +82,16 @@ src/
     auth.ts            # Better Auth server instance
     auth-client.ts     # Better Auth client instance
     dal.ts             # session + role checks (server-only)
+    authorization.ts   # shared action guards (server-only)
+    dates.ts           # @db.Date helpers
+    attendance.ts      # attendance reads (server-only)
+    grades.ts          # subjects/terms/grades reads + reports (server-only)
     prisma.ts          # Prisma client singleton
     roles.ts           # Role types + constants
 ```
+
+**Domain documentation lives in [`docs/domain-model.md`](docs/domain-model.md)** —
+read it before touching attendance, subjects, terms, grades, or reports.
 
 ## Conventions
 

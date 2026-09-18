@@ -41,6 +41,8 @@ model User {
   studentComments StudentComment[]
   guardianComments GuardianComment[]
   classComments   ClassComment[]
+  recordedAttendance Attendance[]  @relation("AttendanceRecorder")
+  recordedGrades  Grade[]          @relation("GradeRecorder")
 }
 
 model Session {
@@ -111,6 +113,8 @@ model Student {
   guardians   StudentGuardian[]
   enrollments Enrollment[]
   comments    StudentComment[]
+  attendance  Attendance[]
+  grades      Grade[]
 
   @@index([lastName, firstName])
   @@map("students")
@@ -175,7 +179,8 @@ model Level {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  classes SchoolClass[]
+  classes  SchoolClass[]
+  subjects Subject[]
 
   @@map("levels")
 }
@@ -191,7 +196,8 @@ model ClassSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  classes SchoolClassSession[]
+  classes    SchoolClassSession[]
+  attendance Attendance[]
 
   @@map("class_sessions")
 }
@@ -212,6 +218,8 @@ model SchoolClass {
   sessions    SchoolClassSession[]
   enrollments Enrollment[]
   comments    ClassComment[]
+  attendance  Attendance[]
+  grades      Grade[]
 
   @@index([teacherId])
   @@index([levelId])
@@ -306,4 +314,136 @@ model ClassComment {
   @@index([classId])
   @@index([authorId])
   @@map("class_comments")
+}
+
+// ---------------------------------------------------------------------------
+// Attendance — presence per student, per class, per session slot, per date.
+// One row = one student's status at one class meeting. The unique key makes
+// marking idempotent (re-saving the roster upserts instead of duplicating).
+// ---------------------------------------------------------------------------
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model Attendance {
+  id           String           @id @default(cuid())
+  studentId    String
+  classId      String
+  sessionId    String // ClassSession (weekend slot), not an auth Session
+  date         DateTime         @db.Date
+  status       AttendanceStatus
+  note         String?
+  recordedById String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  student    Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class      SchoolClass  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  // Restrict: attendance is history — deleting a lookup slot must not silently
+  // wipe records (unlike SchoolClassSession, which cascades).
+  session    ClassSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  recordedBy User?        @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, classId, sessionId, date])
+  @@index([classId, sessionId, date])
+  @@index([studentId])
+  @@index([recordedById])
+  @@map("attendance")
+}
+
+// ---------------------------------------------------------------------------
+// Academic years, terms (periods), subjects and grades.
+//
+// - `AcademicYear` owns `Term`s (3 per year). The model is called `Term`
+//   internally to avoid colliding with `ClassSession.period` (time-of-day);
+//   the UI labels it "Period".
+// - `Subject` is scoped to a `Level` (e.g. "Math" exists once per level); the
+//   level of a grade therefore comes from the student's class.
+// - A `Grade` is one student's score in one subject for one term. Scores are
+//   integers 1-10; `null` means "not graded yet". Averages/ranks are never
+//   stored — reports compute them on read.
+// ---------------------------------------------------------------------------
+
+model AcademicYear {
+  id        String    @id @default(cuid())
+  name      String    @unique // e.g. "2026-2027"
+  startDate DateTime? @db.Date
+  endDate   DateTime? @db.Date
+  // At most one current year; enforced in the Server Action, not the DB.
+  isCurrent Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  terms Term[]
+
+  @@map("academic_years")
+}
+
+model Term {
+  id             String    @id @default(cuid())
+  academicYearId String
+  name           String // e.g. "Period 1"
+  sortOrder      Int
+  // Date bounds let reports scope attendance to a term / year.
+  startDate      DateTime? @db.Date
+  endDate        DateTime? @db.Date
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  grades       Grade[]
+
+  @@unique([academicYearId, name])
+  @@unique([academicYearId, sortOrder])
+  @@index([academicYearId])
+  @@map("terms")
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  levelId   String
+  name      String // clean name ("Math"); the level is the relation below
+  sortOrder Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  level  Level   @relation(fields: [levelId], references: [id], onDelete: Restrict)
+  grades Grade[]
+
+  @@unique([levelId, name])
+  @@index([levelId])
+  @@map("subjects")
+}
+
+model Grade {
+  id           String   @id @default(cuid())
+  studentId    String
+  classId      String // context + authorization; one class per student per term
+  subjectId    String
+  termId       String
+  score        Int? // 1-10; null = not graded
+  remark       String?
+  recordedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  // Restrict: grades are history — deleting a subject/term must not wipe them.
+  subject Subject     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  term    Term        @relation(fields: [termId], references: [id], onDelete: Restrict)
+  recordedBy User?    @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, subjectId, termId])
+  @@index([classId, termId])
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([termId])
+  @@index([recordedById])
+  @@map("grades")
 }
