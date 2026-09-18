@@ -99,11 +99,15 @@ export async function deleteAcademicYear(input: unknown): Promise<void> {
   const { id } = z.object({ id: z.string().min(1) }).parse(input);
   await requireManager();
 
-  const grades = await prisma.grade.count({
-    where: { term: { academicYearId: id } },
-  });
+  const [grades, donations] = await Promise.all([
+    prisma.grade.count({ where: { term: { academicYearId: id } } }),
+    prisma.studentDonation.count({ where: { academicYearId: id } }),
+  ]);
   if (grades > 0) {
     throw new Error("Cannot delete an academic year that has grades");
+  }
+  if (donations > 0) {
+    throw new Error("Cannot delete an academic year that has donations");
   }
 
   await prisma.academicYear.delete({ where: { id } });

@@ -16,6 +16,7 @@ visual schema lives in [`erd.md`](./erd.md) / [`erd.mmd`](./erd.mmd).
 | Date-only helpers          | `src/lib/dates.ts`                                              |
 | Attendance reads           | `src/lib/attendance.ts`                                         |
 | Subjects/terms/grades reads| `src/lib/grades.ts`                                             |
+| Donation reads             | `src/lib/donations.ts`                                          |
 | Server Actions             | `src/app/actions/*.ts`                                          |
 
 Reads are `server-only` modules; writes are `"use server"` actions. Both
@@ -32,7 +33,7 @@ Two groups of tables:
 - **School domain**: `Student`, `Guardian`, `StudentGuardian`, `Room`, `Level`,
   `ClassSession`, `SchoolClass`, `SchoolClassSession`, `Enrollment`, the three
   `*Comment` tables, plus **`Attendance`**, **`AcademicYear`**, **`Term`**,
-  **`Subject`**, **`Grade`**.
+  **`Subject`**, **`Grade`**, **`DonationSetting`**, **`StudentDonation`**.
 
 Key relations:
 
@@ -44,6 +45,9 @@ User 1─* Grade ("recordedBy")        // author of the score
 SchoolClass 1─* Attendance           // presence, keyed by session + date
 Student 1─* Attendance
 ClassSession 1─* Attendance
+Student 1─* StudentDonation *─1 AcademicYear   // yearly donation
+User 1─* StudentDonation ("recordedBy")
+DonationSetting                       // singleton global default amount
 ```
 
 ## Model notes
@@ -103,6 +107,30 @@ One student's score in one subject for one term.
 - Averages, ranks and report totals are **never stored** — they are computed on
   read in `src/lib/grades.ts`.
 
+### DonationSetting (`donation_settings`)
+
+A **singleton** row (`id = "default"`) holding the global default donation
+amount (`Decimal(10,2)`). There is no per-year default — the default is global,
+but each student's expected amount is snapshotted per year (see below).
+
+### StudentDonation (`student_donations`)
+
+One row per **student per year** — the yearly donation.
+
+- `expectedAmount` — the amount to fulfil. Defaults from `DonationSetting` and is
+  overridable (registration sets it; some families pay less). `0` = exempt.
+- `paidAmount` — a single manually-updated value (no installments). Partial and
+  overpayment are allowed.
+- `category` — `FULL | REDUCED | EXEMPT` (classification of the expectation).
+- `paidAt`, `note`, `recordedById` — optional metadata.
+- Unique `(studentId, academicYearId)`.
+- Balance and status are **derived on read**:
+  `balance = expectedAmount − paidAmount`,
+  `status = EXEMPT` (expected ≤ 0) · `PAID` (paid ≥ expected) ·
+  `PARTIAL` (paid > 0) · `UNPAID`.
+- Reports left-join this row, so students without one fall back to the global
+  default / `FULL` / `0` — rows do not need to be pre-created.
+
 ## Invariants (enforced in actions, not the DB)
 
 1. A teacher may only write attendance/grades for classes where
@@ -115,6 +143,9 @@ One student's score in one subject for one term.
 4. Attendance session must be linked to the class (`SchoolClassSession`).
 5. At most one `AcademicYear.isCurrent = true`.
 6. `score` is `1..10` or null; `remark` ≤ 500 chars.
+7. Donation amounts are non-negative `Decimal(10,2)`; `expectedAmount` defaults
+   to the global setting when omitted.
+8. Donations are manager-only (`requireManager`).
 
 ## Authorization
 
@@ -137,9 +168,12 @@ One student's score in one subject for one term.
 | `Attendance → ClassSession`  | Restrict  | Lookup deletion must not wipe history          |
 | `Attendance → Class`/`Student`| Cascade  | Mirrors grades                                 |
 | `Subject → Level`            | Restrict  | Can't drop a level that still has subjects     |
+| `StudentDonation → Student`  | Cascade   | Removing a student removes their donation rows |
+| `StudentDonation → AcademicYear` | Restrict | Financial history; can't delete a year with donations |
+| `StudentDonation → User`     | SetNull   | Keep the record if the recorder is removed     |
 
-Actions pre-check grade counts and throw friendly errors before relying on the
-DB `Restrict`.
+Actions pre-check grade/donation counts and throw friendly errors before relying
+on the DB `Restrict`.
 
 ## Reports (`src/lib/grades.ts`, read-only)
 
@@ -165,13 +199,24 @@ Averaging rules:
 The student's class is resolved from their grades for the term, falling back to
 their most recent active enrollment (see `resolveReportClass`).
 
+## Donation reports (`src/lib/donations.ts`, read-only)
+
+- **`getDonationSetting()`** — the global default amount (0 if unset).
+- **`getStudentDonation({ studentId, academicYearId })`** — one student's row.
+- **`getDonationReport({ academicYearId, classId? })`** — who paid and who
+  didn't: rows per student (all students, or active enrollments of `classId`)
+  with `expectedAmount`, `paidAmount`, `balance`, `category`, `status`, `paidAt`,
+  `note`; plus `totals` (expected, collected, outstanding, and counts per
+  status). Outstanding excludes exempt students (it sums only positive
+  balances). `Decimal` values are returned as `number`.
+
 ## Operational notes / gotchas
 
 - **Migration timestamps**: the original `init` migration was future-dated,
   which made newer migrations sort before it and broke the shadow database.
   Timestamps were normalized to real apply order
-  (`init` → `add_attendance` → `add_grades_subjects`). Keep migration folder
-  timestamps monotonically increasing.
+  (`init` → `add_attendance` → `add_grades_subjects` → `add_donations`). Keep
+  migration folder timestamps monotonically increasing.
 - **Creating migrations**: `pnpm db:migrate -- --name x` drops into an
   interactive prompt because the extra `--` is passed through. Use
   `pnpm exec prisma migrate dev --name x` instead.
@@ -194,3 +239,8 @@ their most recent active enrollment (see `resolveReportClass`).
 - **Subject families** if cross-level subject aggregation is ever needed.
 - **Teacher per subject** (a `ClassSubject`/assignment table) if one class
   teacher stops being enough; grade authorization would move to that table.
+- **Donations in registration**: the registration flow (not built) should call
+  `setStudentDonation` with an overridden `expectedAmount`, defaulting to the
+  global setting.
+- **Donation payment history**: currently a single `paidAmount` per student/year.
+  Move to a payments table if installments/audit are needed.

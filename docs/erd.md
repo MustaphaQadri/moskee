@@ -225,6 +225,27 @@ erDiagram
         timestamp updatedAt
     }
 
+    donation_settings {
+        text id PK "singleton, id = default"
+        numeric defaultAmount "Decimal(10,2)"
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    student_donations {
+        text id PK
+        text studentId FK,UK "unique per academicYear"
+        text academicYearId FK,UK "unique per student"
+        numeric expectedAmount "Decimal(10,2)"
+        numeric paidAmount "Decimal(10,2), default 0"
+        DonationCategory category "FULL | REDUCED | EXEMPT"
+        timestamp paidAt "DATE"
+        text note
+        text recordedById FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     User ||--o{ Session : "authenticates via"
     User ||--o{ Account : "authenticates via"
     User |o--o{ classes : "teaches"
@@ -260,6 +281,10 @@ erDiagram
     students ||--o{ grades : "earns"
     classes ||--o{ grades : "records"
     User |o--o{ grades : "records"
+
+    students ||--o{ student_donations : "donates"
+    academic_years ||--o{ student_donations : "receives"
+    User |o--o{ student_donations : "records"
 ```
 
 ## Legend
@@ -274,9 +299,11 @@ erDiagram
   `attendance (studentId, classId, sessionId, date)`,
   `terms (academicYearId, name)` and `(academicYearId, sortOrder)`,
   `subjects (levelId, name)`,
-  `grades (studentId, subjectId, termId)`.
+  `grades (studentId, subjectId, termId)`,
+  `student_donations (studentId, academicYearId)`.
 - `Sex` is a PostgreSQL enum: `MALE | FEMALE | OTHER`; `AttendanceStatus` is
-  `PRESENT | ABSENT | LATE | EXCUSED`.
+  `PRESENT | ABSENT | LATE | EXCUSED`; `DonationCategory` is
+  `FULL | REDUCED | EXEMPT`.
 - `_prisma_migrations` (Prisma's bookkeeping table) is omitted — infrastructure,
   not application data.
 

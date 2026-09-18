@@ -64,6 +64,7 @@ These differ from older versions and are the most common source of mistakes.
 
 ```
 docs/
+  functional.md        # what the app does, in product terms
   domain-model.md      # domain entities, invariants, reports, gotchas
   erd.md / erd.mmd     # entity relationship diagram
 prisma/
@@ -72,7 +73,7 @@ prisma/
 prisma7.config.ts      # Prisma CLI config
 src/
   app/
-    actions/           # Server Actions (attendance, grades, lookups)
+    actions/           # Server Actions (attendance, grades, donations, lookups)
     layout.tsx         # MantineProvider + ColorSchemeScript
     page.tsx
     api/auth/[...all]/route.ts   # Better Auth handler
@@ -86,12 +87,15 @@ src/
     dates.ts           # @db.Date helpers
     attendance.ts      # attendance reads (server-only)
     grades.ts          # subjects/terms/grades reads + reports (server-only)
+    donations.ts       # donation reads + reports (server-only)
     prisma.ts          # Prisma client singleton
     roles.ts           # Role types + constants
 ```
 
-**Domain documentation lives in [`docs/domain-model.md`](docs/domain-model.md)** —
-read it before touching attendance, subjects, terms, grades, or reports.
+**Domain documentation lives in [`docs/domain-model.md`](docs/domain-model.md)**
+(entities/invariants) and [`docs/functional.md`](docs/functional.md)
+(feature behaviour) — read them before touching attendance, subjects, terms,
+grades, donations, or reports.
 
 ## Conventions
 

@@ -43,6 +43,7 @@ model User {
   classComments   ClassComment[]
   recordedAttendance Attendance[]  @relation("AttendanceRecorder")
   recordedGrades  Grade[]          @relation("GradeRecorder")
+  recordedDonations StudentDonation[] @relation("DonationRecorder")
 }
 
 model Session {
@@ -115,6 +116,7 @@ model Student {
   comments    StudentComment[]
   attendance  Attendance[]
   grades      Grade[]
+  donations   StudentDonation[]
 
   @@index([lastName, firstName])
   @@map("students")
@@ -378,7 +380,8 @@ model AcademicYear {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  terms Term[]
+  terms     Term[]
+  donations StudentDonation[]
 
   @@map("academic_years")
 }
@@ -446,4 +449,55 @@ model Grade {
   @@index([termId])
   @@index([recordedById])
   @@map("grades")
+}
+
+// ---------------------------------------------------------------------------
+// Donations — guardians pay a yearly donation per student.
+//
+// - `DonationSetting` is a singleton holding the global default amount.
+// - `StudentDonation` is one row per student per year: the expected amount
+//   (defaults from the setting, overridable — some families pay less or
+//   nothing) and the single manually-updated paid amount.
+// - Balance/status are derived on read: balance = expected - paid.
+// ---------------------------------------------------------------------------
+
+enum DonationCategory {
+  FULL
+  REDUCED
+  EXEMPT
+}
+
+model DonationSetting {
+  id            String   @id @default("default")
+  defaultAmount Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("donation_settings")
+}
+
+model StudentDonation {
+  id             String           @id @default(cuid())
+  studentId      String
+  academicYearId String
+  // Expected amount for this student this year (0 when exempt).
+  expectedAmount Decimal          @db.Decimal(10, 2)
+  // Single paid value (partial/over allowed); balance = expected - paid.
+  paidAmount     Decimal          @default(0) @db.Decimal(10, 2)
+  category       DonationCategory @default(FULL)
+  paidAt         DateTime?        @db.Date
+  note           String?
+  recordedById   String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // Restrict: financial history — a year with donations cannot be deleted.
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("DonationRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId])
+  @@index([recordedById])
+  @@map("student_donations")
 }
