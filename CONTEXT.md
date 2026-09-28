@@ -4,8 +4,12 @@
 
 ## Status
 
-Framework + scaffold + initial data model complete. DB migrated and seeded.
-No user-facing features built yet.
+Framework + scaffold + data model complete. DB migrated and seeded.
+Sign-in, dashboard shell (role-aware nav + light/dark toggle), subscription
+management under "Inschrijvingen", staff (manager/teacher) management, a Beheer
+screen (levels, rooms, subjects, competencies, timeslots, academic years,
+terms), and classes (grid, detail, enrollment/move, student comments) are built.
+Attendance and grades UI is next (their buttons exist but are disabled).
 
 - Next.js 16 (App Router) · Mantine 9 · Better Auth 1.7 · Prisma 7 + PostgreSQL · pnpm
 - `pnpm build`, `pnpm lint`, `pnpm typecheck` all green. Dev server smoke-tested.
@@ -30,10 +34,12 @@ gained a `phone` column. All domain tables have `id` (cuid) + `createdAt` +
 `updatedAt`.
 
 - `Student` (`students`) — firstName, lastName, `sex` (enum), dateOfBirth.
-- `Guardian` (`guardians`) — firstName, lastName, email, phone, address.
+- `Guardian` (`guardians`) — firstName, lastName, email, phone, address,
+  `donationNumber?` + `educationNumber?` (optional, unique — subscription ids).
 - `StudentGuardian` (`student_guardians`) — M:N student↔guardian + `relation`, `isPrimary`.
 - `Room` / `Level` / `ClassSession` — managed lookup sets. `ClassSession` holds the
-  6 weekend slots (Sat/Sun × morning/noon/afternoon) via `label`/`day`/`period`.
+  weekend slots via `label`/`day`/`startTime`/`endTime` (the old `period` column
+  was removed). Subjects carry `Competency` rows ("vaardigheden") via `Subject.competencies`.
 - `SchoolClass` (`classes`) — name, description, level (required), room?, teacher?.
 - `SchoolClassSession` (`class_session_links`) — M:N class↔session.
 - `Enrollment` (`enrollments`) — M:N student↔class + dates/status.
@@ -50,12 +56,20 @@ gained a `phone` column. All domain tables have `id` (cuid) + `createdAt` +
 
 ## Next steps (feature work, in order)
 
-1. Sign-in page (`/sign-in`) + logout; verify role redirects.
-2. Dashboard shell (`AppShell` layout) gated by `requireSession`.
-3. Classes CRUD (managers manage; teachers see own classes).
-4. Children + guardians registration (manager/teacher).
-5. Enrollments linking children to classes.
-6. Teacher management (manager-only).
+1. ~~Sign-in page (`/sign-in`) + logout; verify role redirects.~~ Done.
+2. ~~Dashboard shell (`AppShell` layout) gated by `requireSession`.~~ Done.
+3. ~~Guardian + student registration (subscription form, list, detail).~~ Done
+   (manager-only; students are added from a guardian).
+4. ~~Staff management (managers add/find/edit/remove managers & teachers).~~ Done
+   (manager-only; cannot delete self or the last manager).
+5. ~~Beheer screen + classes: levels/rooms/subjects/timeslots CRUD (manager-only),
+   classes grid + detail, enroll/move students (manager-only), and per-student
+   comments (add by staff, delete by managers).~~ Done. `seed.ts` also creates the
+   6 default timeslots.
+6. Attendance UI (take attendance per class meeting; button on class detail is
+   disabled for now).
+7. Grades UI (grade sheets per class/term, subjects per level; button disabled).
+8. Enrollments from the guardian registration flow (currently only via classes).
 
 ## Open decisions
 

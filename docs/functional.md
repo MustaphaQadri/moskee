@@ -4,10 +4,14 @@ What Moskee does, in product terms. This is the companion to
 [`domain-model.md`](./domain-model.md) (technical/data model) and
 [`AGENTS.md`](../AGENTS.md) (stack + conventions).
 
-> **Status.** The data layer and Server Actions exist for the areas below; the
-> only user-facing flow built so far is authentication. There are **no UI pages
-> yet** for students, classes, attendance, grades, reports, or donations. This
-> document describes the intended behaviour that those pages will expose.
+> **Status.** Built: authentication; dashboard shell; subscriptions
+> (guardians/students); staff management; a Beheer screen for levels, rooms,
+> subjects, competencies (vaardigheden), timeslots, academic years and terms;
+> and classes (grid, detail, enroll/move students, per-student comments).
+> Attendance and grades have data layers and actions but **no UI yet** (their
+> buttons on the class detail are disabled). Reports and donations UI are also
+> not built. This document describes the intended behaviour those pages will
+> expose.
 
 ## Purpose
 
@@ -39,10 +43,10 @@ Moskee manages a small weekend school:
 | ------------------- | ----------------------------------------------------------------------- |
 | **Level**           | A teaching level ("Beginners", "Group 1").                              |
 | **Class**           | A group of students taught at a level, optionally in a room by a teacher. |
-| **Session slot**    | A recurring weekend slot: Saturday/Sunday × morning/noon/afternoon (6 possible). |
+| **Session slot**    | A recurring weekend timeslot: a day (from a fixed Dutch dropdown) plus a start and end time. |
 | **Meeting**         | A dated occurrence of a class in a session slot — `(class, slot, date)`. |
 | **Academic year**   | e.g. "2026-2027"; contains the terms. One is current.                   |
-| **Term / Period**   | A period within a year (three per year), with optional date bounds.     |
+| **Term / Period**   | A period within a year, with optional date bounds.                      |
 | **Subject**         | A subject offered at a level ("Math"); the same name exists once per level. |
 | **Enrollment**      | The link between a student and a class, with start/end dates and status. |
 | **Grade**           | A student's score in one subject for one term (1–10, or blank).         |
@@ -64,8 +68,8 @@ Moskee manages a small weekend school:
 - A class belongs to a **level** (required), and may have a **room** and a
   **teacher**.
 - A class runs in **one or more session slots** (e.g. Saturday morning *and*
-  Sunday noon).
-- Rooms have an optional capacity.
+  Sunday noon). Each slot has a day, a start time and an end time.
+- Rooms have an optional capacity and an optional description.
 - Levels and rooms are managed lists.
 
 ### 3. Enrollment
@@ -96,6 +100,9 @@ Moskee manages a small weekend school:
 
 - Subjects are defined **per level**: "Math" exists once at each level as its own
   subject. A class studies the subjects of its level.
+- A subject can list **competencies** ("vaardigheden") — the skills/learning
+  goals it covers. They are descriptive and shown alongside the subject on the
+  class detail; the subject itself is what gets graded for now.
 - Subjects have an order (column order on grade sheets) and an **active** flag to
   retire them without deleting history.
 - A subject that already has grades cannot be deleted.

@@ -15,6 +15,11 @@ visual schema lives in [`erd.md`](./erd.md) / [`erd.mmd`](./erd.mmd).
 | Shared action guards       | `src/lib/authorization.ts`                                      |
 | Date-only helpers          | `src/lib/dates.ts`                                              |
 | Attendance reads           | `src/lib/attendance.ts`                                         |
+| Guardians/students reads   | `src/lib/guardians.ts`                                          |
+| Lookup reads (levels/rooms/timeslots) | `src/lib/lookups.ts`                                 |
+| Classes reads              | `src/lib/classes.ts`                                            |
+| Student detail + comments  | `src/lib/students.ts`                                           |
+| Action result helpers      | `src/lib/action-result.ts`                                      |
 | Subjects/terms/grades reads| `src/lib/grades.ts`                                             |
 | Donation reads             | `src/lib/donations.ts`                                          |
 | Server Actions             | `src/app/actions/*.ts`                                          |
@@ -33,11 +38,13 @@ Two groups of tables:
 - **School domain**: `Student`, `Guardian`, `StudentGuardian`, `Room`, `Level`,
   `ClassSession`, `SchoolClass`, `SchoolClassSession`, `Enrollment`, the three
   `*Comment` tables, plus **`Attendance`**, **`AcademicYear`**, **`Term`**,
-  **`Subject`**, **`Grade`**, **`DonationSetting`**, **`StudentDonation`**.
+  **`Subject`**, **`Competency`**, **`Grade`**, **`DonationSetting`**,
+  **`StudentDonation`**.
 
 Key relations:
 
 ```
+Level 1─* Subject 1─* Competency
 Level 1─* Subject 1─* Grade *─1 Student
 Level 1─* SchoolClass 1─* Grade
 AcademicYear 1─* Term 1─* Grade
@@ -51,6 +58,24 @@ DonationSetting                       // singleton global default amount
 ```
 
 ## Model notes
+
+### ClassSession / timeslot (`class_sessions`)
+
+A recurring weekend **timeslot** a class runs in — **not** an auth `Session` and
+not a dated event. It holds a human `label` (e.g. `"Zaterdag ochtend"`), an
+optional `day` (chosen from a fixed Dutch dropdown), and optional `startTime` /
+`endTime` as `"HH:mm"` strings. There is no separate `period` (morning/noon/
+afternoon) column anymore; the times are the source of truth. The 6 default
+slots are created by `seed.ts` (Saturday/Sunday × morning/noon/afternoon).
+
+### Guardian (`guardians`)
+
+A parent/carer, linked to students through `StudentGuardian` (relation +
+`isPrimary`). Besides name/email/phone/address it carries two optional, unique
+identifiers from the subscription form: `donationNumber` and `educationNumber`
+(unique only when present — Postgres allows many NULLs). Manager-only to read or
+write (`requireManager`); students are created either during the guardian
+subscription or from the guardian detail view, never on their own.
 
 ### Attendance (`attendance`)
 
@@ -74,8 +99,8 @@ the DB.
 
 ### Term (`terms`)
 
-A period within a year (UI says "Period"). The model is named `Term` to avoid
-colliding with `ClassSession.period` (time-of-day). Exactly the fields a report
+A period within a year (UI says "Periode"). The model is named `Term` to avoid
+confusing it with the `ClassSession` timeslots. Exactly the fields a report
 needs: `name`, `sortOrder`, and optional `startDate`/`endDate` used to scope
 attendance to the term.
 
@@ -94,6 +119,16 @@ the relation. The grade's level therefore comes from the student's class.
   subjects from new sheets.
 - Cross-level reporting (e.g. "average in Math across levels") is not supported
   by design; add a `SubjectFamily` later only if it becomes necessary.
+
+### Competency (`competencies`)
+
+A **vaardigheid**: a skill/learning goal inside a `Subject`. Competencies are
+**descriptive**: a subject's grade sheet currently grades the *subject*, and the
+competencies are shown with it so staff know what the grade covers. They are
+**not** referenced by stored grades, so a competency can be deleted freely.
+
+- Unique `(subjectId, name)`; `sortOrder` and `isActive` behave as on subjects.
+- Deleting a subject cascades to its competencies.
 
 ### Grade (`grades`)
 
@@ -168,6 +203,7 @@ One row per **student per year** — the yearly donation.
 | `Attendance → ClassSession`  | Restrict  | Lookup deletion must not wipe history          |
 | `Attendance → Class`/`Student`| Cascade  | Mirrors grades                                 |
 | `Subject → Level`            | Restrict  | Can't drop a level that still has subjects     |
+| `Competency → Subject`       | Cascade   | A skill belongs to its subject                 |
 | `StudentDonation → Student`  | Cascade   | Removing a student removes their donation rows |
 | `StudentDonation → AcademicYear` | Restrict | Financial history; can't delete a year with donations |
 | `StudentDonation → User`     | SetNull   | Keep the record if the recorder is removed     |

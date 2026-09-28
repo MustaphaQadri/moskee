@@ -1,114 +1,134 @@
 "use server";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/authorization";
-import { parseDateOnly, toDateOnly } from "@/lib/dates";
+import { parseDateOnly } from "@/lib/dates";
+import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
+import { optionalDate } from "@/lib/validation";
 
-// Manager-only CRUD for academic years. A year owns terms (periods); grades
-// hang off terms, so deletion is blocked while graded terms exist.
+// Manager-only CRUD for academic years. A year owns terms; terms own grades.
 
-const dateOnly = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
-
-const name = z.string().trim().min(1).max(100);
+const name = z.string().trim().min(1, "Naam is verplicht").max(100);
 
 const createSchema = z.object({
   name,
-  startDate: dateOnly.nullish(),
-  endDate: dateOnly.nullish(),
+  startDate: optionalDate,
+  endDate: optionalDate,
 });
 
 const updateSchema = z.object({
   id: z.string().min(1),
   name,
-  startDate: dateOnly.nullable(),
-  endDate: dateOnly.nullable(),
+  startDate: optionalDate,
+  endDate: optionalDate,
 });
 
-export type AcademicYearDTO = {
-  id: string;
-  name: string;
-  startDate: string | null;
-  endDate: string | null;
-  isCurrent: boolean;
-};
+async function assertNameFree(nameValue: string, excludeId?: string) {
+  const clash = await prisma.academicYear.findFirst({
+    where: { name: nameValue, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    select: { id: true },
+  });
+  if (clash) throw new ActionError("Er bestaat al een schooljaar met deze naam");
+}
 
-function toDTO(year: {
-  id: string;
-  name: string;
-  startDate: Date | null;
-  endDate: Date | null;
-  isCurrent: boolean;
-}): AcademicYearDTO {
+function parseBounds(startDate?: string | null, endDate?: string | null) {
   return {
-    id: year.id,
-    name: year.name,
-    startDate: toDateOnly(year.startDate),
-    endDate: toDateOnly(year.endDate),
-    isCurrent: year.isCurrent,
+    startDate: startDate ? parseDateOnly(startDate) : null,
+    endDate: endDate ? parseDateOnly(endDate) : null,
   };
 }
 
-export async function createAcademicYear(input: unknown): Promise<AcademicYearDTO> {
-  const parsed = createSchema.parse(input);
+export async function createAcademicYear(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
   await requireManager();
+  try {
+    const parsed = createSchema.parse(input);
+    await assertNameFree(parsed.name);
 
-  const year = await prisma.academicYear.create({
-    data: {
-      name: parsed.name,
-      startDate: parsed.startDate ? parseDateOnly(parsed.startDate) : null,
-      endDate: parsed.endDate ? parseDateOnly(parsed.endDate) : null,
-    },
-  });
-  return toDTO(year);
+    const year = await prisma.academicYear.create({
+      data: {
+        name: parsed.name,
+        ...parseBounds(parsed.startDate, parsed.endDate),
+      },
+      select: { id: true },
+    });
+
+    revalidatePath("/dashboard/manage");
+    return { ok: true, data: { id: year.id } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
 }
 
-export async function updateAcademicYear(input: unknown): Promise<AcademicYearDTO> {
-  const parsed = updateSchema.parse(input);
+export async function updateAcademicYear(input: unknown): Promise<ActionResult> {
   await requireManager();
+  try {
+    const parsed = updateSchema.parse(input);
+    await assertNameFree(parsed.name, parsed.id);
 
-  const year = await prisma.academicYear.update({
-    where: { id: parsed.id },
-    data: {
-      name: parsed.name,
-      startDate: parsed.startDate ? parseDateOnly(parsed.startDate) : null,
-      endDate: parsed.endDate ? parseDateOnly(parsed.endDate) : null,
-    },
-  });
-  return toDTO(year);
+    await prisma.academicYear.update({
+      where: { id: parsed.id },
+      data: {
+        name: parsed.name,
+        ...parseBounds(parsed.startDate, parsed.endDate),
+      },
+    });
+
+    revalidatePath("/dashboard/manage");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
 }
 
 // Exactly one current year: unset the previous one in the same transaction.
-export async function setCurrentAcademicYear(input: unknown): Promise<void> {
-  const { id } = z.object({ id: z.string().min(1) }).parse(input);
+export async function setCurrentAcademicYear(
+  input: unknown,
+): Promise<ActionResult> {
   await requireManager();
+  try {
+    const { id } = z.object({ id: z.string().min(1) }).parse(input);
 
-  await prisma.$transaction([
-    prisma.academicYear.updateMany({
-      where: { isCurrent: true, NOT: { id } },
-      data: { isCurrent: false },
-    }),
-    prisma.academicYear.update({ where: { id }, data: { isCurrent: true } }),
-  ]);
+    await prisma.$transaction([
+      prisma.academicYear.updateMany({
+        where: { isCurrent: true, NOT: { id } },
+        data: { isCurrent: false },
+      }),
+      prisma.academicYear.update({ where: { id }, data: { isCurrent: true } }),
+    ]);
+
+    revalidatePath("/dashboard/manage");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
 }
 
-export async function deleteAcademicYear(input: unknown): Promise<void> {
-  const { id } = z.object({ id: z.string().min(1) }).parse(input);
+export async function deleteAcademicYear(input: unknown): Promise<ActionResult> {
   await requireManager();
+  try {
+    const { id } = z.object({ id: z.string().min(1) }).parse(input);
 
-  const [grades, donations] = await Promise.all([
-    prisma.grade.count({ where: { term: { academicYearId: id } } }),
-    prisma.studentDonation.count({ where: { academicYearId: id } }),
-  ]);
-  if (grades > 0) {
-    throw new Error("Cannot delete an academic year that has grades");
-  }
-  if (donations > 0) {
-    throw new Error("Cannot delete an academic year that has donations");
-  }
+    const [grades, donations] = await Promise.all([
+      prisma.grade.count({ where: { term: { academicYearId: id } } }),
+      prisma.studentDonation.count({ where: { academicYearId: id } }),
+    ]);
+    if (grades > 0) {
+      throw new ActionError("Kan een schooljaar met cijfers niet verwijderen");
+    }
+    if (donations > 0) {
+      throw new ActionError("Kan een schooljaar met donaties niet verwijderen");
+    }
 
-  await prisma.academicYear.delete({ where: { id } });
+    await prisma.academicYear.delete({ where: { id } });
+
+    revalidatePath("/dashboard/manage");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
 }

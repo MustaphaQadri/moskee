@@ -72,6 +72,8 @@ erDiagram
         text email
         text phone
         text address
+        text donationNumber UK "optional, unique when present"
+        text educationNumber UK "optional, unique when present"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -90,6 +92,7 @@ erDiagram
         text id PK
         text name UK
         integer capacity
+        text description
         timestamp createdAt
         timestamp updatedAt
     }
@@ -104,9 +107,10 @@ erDiagram
 
     class_sessions {
         text id PK
-        text label UK "e.g. Saturday morning"
-        text day "Saturday | Sunday"
-        text period "morning | noon | afternoon"
+        text label UK "e.g. Zaterdag ochtend"
+        text day "Maandag .. Zondag (dropdown)"
+        text startTime "HH:mm"
+        text endTime "HH:mm"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -199,6 +203,16 @@ erDiagram
         timestamp updatedAt
     }
 
+    competencies {
+        text id PK
+        text subjectId FK,UK "unique per name"
+        text name "vaardigheid"
+        integer sortOrder
+        boolean isActive
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     attendance {
         text id PK
         text studentId FK,UK "unique per class+session+date"
@@ -275,6 +289,7 @@ erDiagram
     User |o--o{ attendance : "records"
 
     levels ||--o{ subjects : "offers"
+    subjects ||--o{ competencies : "covers"
     academic_years ||--o{ terms : "contains"
     terms ||--o{ grades : "assesses"
     subjects ||--o{ grades : "graded in"
@@ -299,6 +314,7 @@ erDiagram
   `attendance (studentId, classId, sessionId, date)`,
   `terms (academicYearId, name)` and `(academicYearId, sortOrder)`,
   `subjects (levelId, name)`,
+  `competencies (subjectId, name)`,
   `grades (studentId, subjectId, termId)`,
   `student_donations (studentId, academicYearId)`.
 - `Sex` is a PostgreSQL enum: `MALE | FEMALE | OTHER`; `AttendanceStatus` is

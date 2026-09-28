@@ -123,15 +123,20 @@ model Student {
 }
 
 // A guardian (parent/carer). Can be responsible for several students.
+// `donationNumber` and `educationNumber` are optional, unique identifiers from
+// the subscription (Google) form — unique only when present (Postgres allows
+// many NULLs), so they can be used to look a family up.
 model Guardian {
-  id        String   @id @default(cuid())
-  firstName String
-  lastName  String
-  email     String?
-  phone     String?
-  address   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  address         String?
+  donationNumber  String?  @unique
+  educationNumber String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   children StudentGuardian[]
   comments GuardianComment[]
@@ -162,11 +167,12 @@ model StudentGuardian {
 
 // Managed set of classrooms.
 model Room {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  capacity  Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String   @unique
+  capacity    Int?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   classes SchoolClass[]
 
@@ -190,11 +196,14 @@ model Level {
 // Managed set of sessions. This is a weekend school: 3 sessions per day
 // (morning, noon, afternoon) on Saturday and Sunday => 6 possible sessions.
 // A class runs during one or more sessions (see SchoolClassSession).
+// Times are stored as "HH:mm" strings; `day` and the times are what the UI
+// labels a timeslot with (e.g. "Zaterdag 09:00–12:00").
 model ClassSession {
   id        String   @id @default(cuid())
-  label     String   @unique // e.g. "Saturday morning"
-  day       String? // e.g. "Saturday"
-  period    String? // e.g. "morning" | "noon" | "afternoon"
+  label     String   @unique // e.g. "Zaterdag ochtend"
+  day       String? // e.g. "Zaterdag"
+  startTime String? // "HH:mm"
+  endTime   String? // "HH:mm"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -418,9 +427,29 @@ model Subject {
   level  Level   @relation(fields: [levelId], references: [id], onDelete: Restrict)
   grades Grade[]
 
+  competencies Competency[]
+
   @@unique([levelId, name])
   @@index([levelId])
   @@map("subjects")
+}
+
+// A competency ("vaardigheid") within a subject. These are the units that get
+// graded (a subject's grade sheet lists its competencies).
+model Competency {
+  id        String   @id @default(cuid())
+  subjectId String
+  name      String
+  sortOrder Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, name])
+  @@index([subjectId])
+  @@map("competencies")
 }
 
 model Grade {
