@@ -19,6 +19,7 @@ const ATTENDANCE_STATUSES = [
   "PRESENT",
   "ABSENT",
   "LATE",
+  "VERY_LATE",
   "EXCUSED",
 ] as const satisfies readonly AttendanceStatus[];
 

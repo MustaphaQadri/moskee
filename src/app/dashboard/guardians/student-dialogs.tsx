@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "@mantine/form";
 import {
   Button,
-  Checkbox,
   Group,
   Modal,
   Select,
@@ -22,6 +21,7 @@ import {
   updateStudent,
 } from "@/app/actions/guardians";
 import { RELATION_OPTIONS, SEX_OPTIONS } from "./options";
+import { StudentImageInput } from "./student-image-input";
 
 export type StudentRecord = {
   id: string;
@@ -30,7 +30,7 @@ export type StudentRecord = {
   sex: string | null;
   dateOfBirth: string | null;
   relation: string | null;
-  isPrimary: boolean;
+  image: string | null;
 };
 
 type StudentFormValues = {
@@ -39,7 +39,7 @@ type StudentFormValues = {
   sex: string | null;
   dateOfBirth: string;
   relation: string;
-  isPrimary: boolean;
+  image: string | null;
 };
 
 function StudentForm({
@@ -63,7 +63,7 @@ function StudentForm({
       sex: student?.sex ?? null,
       dateOfBirth: student?.dateOfBirth ?? "",
       relation: student?.relation ?? "",
-      isPrimary: student?.isPrimary ?? false,
+      image: student?.image ?? null,
     },
     validate: {
       firstName: (value) => (value.trim() ? null : "Voornaam is verplicht"),
@@ -136,9 +136,9 @@ function StudentForm({
             {...form.getInputProps("relation")}
           />
         </SimpleGrid>
-        <Checkbox
-          label="Primaire contactpersoon voor deze leerling"
-          {...form.getInputProps("isPrimary", { type: "checkbox" })}
+        <StudentImageInput
+          value={form.values.image}
+          onChange={(url) => form.setFieldValue("image", url)}
         />
         <Group justify="flex-end">
           <Button variant="default" onClick={onCancel}>

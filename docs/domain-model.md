@@ -38,16 +38,15 @@ Two groups of tables:
 - **School domain**: `Student`, `Guardian`, `StudentGuardian`, `Room`, `Level`,
   `ClassSession`, `SchoolClass`, `SchoolClassSession`, `Enrollment`, the three
   `*Comment` tables, plus **`Attendance`**, **`AcademicYear`**, **`Term`**,
-  **`Subject`**, **`Competency`**, **`Grade`**, **`DonationSetting`**,
-  **`StudentDonation`**.
+  **`Subject`**, **`Grade`**, **`DonationSetting`**, **`StudentDonation`**.
 
 Key relations:
 
 ```
-Level 1─* Subject 1─* Competency
 Level 1─* Subject 1─* Grade *─1 Student
 Level 1─* SchoolClass 1─* Grade
-AcademicYear 1─* Term 1─* Grade
+Grade *─1 Term                       // global period definition
+Grade *─1 AcademicYear               // scopes the grade to a school year
 User 1─* Grade ("recordedBy")        // author of the score
 SchoolClass 1─* Attendance           // presence, keyed by session + date
 Student 1─* Attendance
@@ -70,8 +69,8 @@ slots are created by `seed.ts` (Saturday/Sunday × morning/noon/afternoon).
 
 ### Guardian (`guardians`)
 
-A parent/carer, linked to students through `StudentGuardian` (relation +
-`isPrimary`). Besides name/email/phone/address it carries two optional, unique
+A parent/carer, linked to students through `StudentGuardian` (with a
+`relation`). Besides name/email/phone/address it carries two optional, unique
 identifiers from the subscription form: `donationNumber` and `educationNumber`
 (unique only when present — Postgres allows many NULLs). Manager-only to read or
 write (`requireManager`); students are created either during the guardian
@@ -84,7 +83,9 @@ Presence for one student, at one class meeting. A "meeting" is
 ("Saturday morning"), **not** an auth `Session` and not a dated event, so the
 date is stored on the row.
 
-- `status`: `PRESENT | ABSENT | LATE | EXCUSED`.
+- `status`: `PRESENT | LATE | VERY_LATE | ABSENT | EXCUSED` (UI: Aanwezig, Te
+  laat, Erg laat, Afwezig, Geoorloofd afwezig). Presence counts
+  `PRESENT + LATE + VERY_LATE`.
 - Unique `(studentId, classId, sessionId, date)` → marking a roster is an
   idempotent upsert.
 - `date` is `@db.Date`; always normalize to UTC midnight via
@@ -95,18 +96,23 @@ date is stored on the row.
 
 A school year (`"2026-2027"`). `isCurrent` marks the active year; **at most one**
 current year is enforced in `setCurrentAcademicYear()` (a transaction), not by
-the DB.
+the DB. It no longer owns terms; it scopes grades and donations.
 
-### Term (`terms`)
+### Term (`terms`) — global period
 
-A period within a year (UI says "Periode"). The model is named `Term` to avoid
-confusing it with the `ClassSession` timeslots. Exactly the fields a report
-needs: `name`, `sortOrder`, and optional `startDate`/`endDate` used to scope
-attendance to the term.
+A **global period** (UI says "Periode"/"Termijn") applied to every academic year.
+The model is named `Term` to avoid confusing it with `ClassSession` timeslots.
+Instead of concrete dates it stores a month range: `startMonth` / `endMonth`
+(1–12). Terms do **not** cross the calendar-year boundary, so `endMonth >=
+startMonth`.
 
-- Unique `(academicYearId, name)` and `(academicYearId, sortOrder)`.
-- `sortOrder` is 1-based; `reorderTerms()` uses a two-pass (negative, then final)
-  update to avoid transiently violating the unique constraint.
+- `name` and `sortOrder` are globally unique. `sortOrder` is 1-based.
+- Concrete dates are derived per academic year from `startMonth` (first day) to
+  `endMonth` (last day) — see `resolveTermDates()` in `src/lib/grades.ts`. The
+  calendar year is chosen from the academic year's start/end month.
+- Editing the periods applies to every year (there is no per-year term list).
+- **Overlap is rejected** in `createTerm`/`updateTerm`: two month ranges must not
+  intersect.
 
 ### Subject (`subjects`)
 
@@ -117,27 +123,21 @@ the relation. The grade's level therefore comes from the student's class.
 - Unique `(levelId, name)`; names stay clean (no `math_l1` suffixes).
 - `sortOrder` orders columns on the grade sheet; `isActive` hides retired
   subjects from new sheets.
+- Optional `description` and `image` (a URL under `/uploads/subjects`, uploaded
+  by a manager via `POST /api/uploads/subject-image`).
 - Cross-level reporting (e.g. "average in Math across levels") is not supported
   by design; add a `SubjectFamily` later only if it becomes necessary.
 
-### Competency (`competencies`)
-
-A **vaardigheid**: a skill/learning goal inside a `Subject`. Competencies are
-**descriptive**: a subject's grade sheet currently grades the *subject*, and the
-competencies are shown with it so staff know what the grade covers. They are
-**not** referenced by stored grades, so a competency can be deleted freely.
-
-- Unique `(subjectId, name)`; `sortOrder` and `isActive` behave as on subjects.
-- Deleting a subject cascades to its competencies.
-
 ### Grade (`grades`)
 
-One student's score in one subject for one term.
+One student's score in one subject for one term **in one academic year**.
 
 - `score Int?` — integer **1..10**; `null` means "not graded yet".
 - `remark String?` — optional note (e.g. "absent", "excellent").
-- Unique `(studentId, subjectId, termId)`. `classId` is stored for context and
-  authorization (one class per student per term is the working assumption).
+- Unique `(studentId, subjectId, termId, academicYearId)`. Since terms are
+  global, `academicYearId` is what scopes the grade to a school year. `classId`
+  is stored for context and authorization (one class per student per term is the
+  working assumption).
 - `recordedById` — staff member who last saved the score.
 - Averages, ranks and report totals are **never stored** — they are computed on
   read in `src/lib/grades.ts`.
@@ -199,11 +199,10 @@ One row per **student per year** — the yearly donation.
 | `Grade → Term`               | Restrict  | Grades are history; can't delete a graded term |
 | `Grade → Subject`            | Restrict  | Same                                           |
 | `Grade → Student`/`Class`    | Cascade   | Removing the parent removes its records        |
-| `Term → AcademicYear`        | Cascade   | A year owns its terms                          |
+| `Grade → AcademicYear`       | Restrict  | A year with grades cannot be deleted           |
 | `Attendance → ClassSession`  | Restrict  | Lookup deletion must not wipe history          |
 | `Attendance → Class`/`Student`| Cascade  | Mirrors grades                                 |
 | `Subject → Level`            | Restrict  | Can't drop a level that still has subjects     |
-| `Competency → Subject`       | Cascade   | A skill belongs to its subject                 |
 | `StudentDonation → Student`  | Cascade   | Removing a student removes their donation rows |
 | `StudentDonation → AcademicYear` | Restrict | Financial history; can't delete a year with donations |
 | `StudentDonation → User`     | SetNull   | Keep the record if the recorder is removed     |
@@ -213,15 +212,21 @@ on the DB `Restrict`.
 
 ## Reports (`src/lib/grades.ts`, read-only)
 
-- **`getClassGradeSheet({ classId, termId })`** — roster (active enrollments) ×
-  level subjects, with existing `score`/`remark` per cell. The grid for entry.
-- **`getStudentPeriodReport({ studentId, termId })`** — one row per level
-  subject with `score`/`remark`, `average` (mean of graded subjects),
+- **`getClassGradeSheet({ classId, termId, academicYearId })`** — roster (active
+  enrollments) × level subjects, with existing `score`/`remark` per cell. The
+  grid for entry.
+- **`getStudentPeriodReport({ studentId, termId, academicYearId })`** — one row
+  per level subject with `score`/`remark`, `average` (mean of graded subjects),
   `gradedCount`, `rank`/`classSize` within the class, and an attendance summary
-  scoped to the term's date bounds.
-- **`getStudentYearlyReport({ studentId, academicYearId })`** — terms in order;
-  per subject the term scores plus a per-subject `average`; `overallAverage`
-  (equal weight per subject); attendance spanning the year's term bounds.
+  scoped to the term's dates for that year.
+- **`getStudentYearlyReport({ studentId, academicYearId })`** — the global terms
+  in order; per subject the term scores plus a per-subject `average`;
+  `overallAverage` (equal weight per subject); attendance spanning the year's
+  resolved term bounds.
+
+Term dates are computed by `resolveTermDates(term, academicYear)` (first day of
+`startMonth` → last day of `endMonth`, in the calendar year the term falls in for
+that academic year).
 
 Averaging rules:
 
@@ -229,7 +234,7 @@ Averaging rules:
 - `rank` is **competition ranking** (ties share a position): count of students
   with a strictly higher class average, +1. Only computed when the student has
   an average.
-- `presenceRate = (PRESENT + LATE) / total`.
+- `presenceRate = (PRESENT + LATE + VERY_LATE) / total`.
 - Attendance in a report is `null` when the term/year has no date bounds.
 
 The student's class is resolved from their grades for the term, falling back to

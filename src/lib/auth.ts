@@ -24,6 +24,14 @@ export const auth = betterAuth({
         defaultValue: TEACHER_ROLE,
         input: false,
       },
+      // Set by a manager when resetting a password; the user is forced to pick a
+      // new one after signing in. Never settable through signup/sign-in.
+      mustChangePassword: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
     },
   },
   plugins: [nextCookies()],

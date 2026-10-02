@@ -3,7 +3,6 @@ import { Stack, Tabs, TabsList, TabsPanel, TabsTab, Title } from "@mantine/core"
 import { requireRole } from "@/lib/dal";
 import {
   listAcademicYears,
-  listAllCompetencies,
   listAllSubjects,
   listLevels,
   listRooms,
@@ -20,16 +19,14 @@ import { TermsPanel } from "./terms-panel";
 export default async function ManagePage() {
   await requireRole("manager");
 
-  const [levels, rooms, sessions, subjects, competencies, years, terms] =
-    await Promise.all([
-      listLevels(),
-      listRooms(),
-      listSessions(),
-      listAllSubjects(),
-      listAllCompetencies(),
-      listAcademicYears(),
-      listTerms(),
-    ]);
+  const [levels, rooms, sessions, subjects, years, terms] = await Promise.all([
+    listLevels(),
+    listRooms(),
+    listSessions(),
+    listAllSubjects(),
+    listAcademicYears(),
+    listTerms(),
+  ]);
 
   return (
     <Stack gap="md">
@@ -52,11 +49,7 @@ export default async function ManagePage() {
           <RoomsPanel rooms={rooms} />
         </TabsPanel>
         <TabsPanel value="subjects" pt="md">
-          <SubjectsPanel
-            levels={levels}
-            subjects={subjects}
-            competencies={competencies}
-          />
+          <SubjectsPanel levels={levels} subjects={subjects} />
         </TabsPanel>
         <TabsPanel value="sessions" pt="md">
           <SessionsPanel sessions={sessions} />
@@ -65,7 +58,7 @@ export default async function ManagePage() {
           <AcademicYearsPanel years={years} />
         </TabsPanel>
         <TabsPanel value="terms" pt="md">
-          <TermsPanel years={years} terms={terms} />
+          <TermsPanel terms={terms} />
         </TabsPanel>
       </Tabs>
     </Stack>

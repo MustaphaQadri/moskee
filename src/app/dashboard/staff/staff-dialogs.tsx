@@ -4,7 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "@mantine/form";
 import {
+  Alert,
   Button,
+  CopyButton,
+  Divider,
   Group,
   Modal,
   PasswordInput,
@@ -15,10 +18,22 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconCopy,
+  IconKey,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+} from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 
-import { createStaff, deleteStaff, updateStaff } from "@/app/actions/users";
+import {
+  createStaff,
+  deleteStaff,
+  resetStaffPassword,
+  updateStaff,
+} from "@/app/actions/users";
 
 export type StaffRecord = {
   id: string;
@@ -143,6 +158,8 @@ function EditStaffForm({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [generated, setGenerated] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -154,6 +171,28 @@ function EditStaffForm({
       name: (value) => (value.trim() ? null : "Naam is verplicht"),
     },
   });
+
+  async function handleReset() {
+    setResetting(true);
+    const result = await resetStaffPassword({ id: staff.id });
+    setResetting(false);
+
+    if (!result.ok) {
+      notifications.show({
+        title: "Resetten mislukt",
+        message: result.error,
+        color: "red",
+      });
+      return;
+    }
+
+    setGenerated(result.data.password);
+    notifications.show({
+      title: "Wachtwoord gereset",
+      message: "Geef het tijdelijke wachtwoord door aan de medewerker.",
+      color: "green",
+    });
+  }
 
   const handleSubmit = form.onSubmit(async (values) => {
     setLoading(true);
@@ -200,6 +239,56 @@ function EditStaffForm({
             Opslaan
           </Button>
         </Group>
+
+        <Divider label="Wachtwoord" labelPosition="left" mt="sm" />
+
+        {generated ? (
+          <Alert color="green" title="Tijdelijk wachtwoord" variant="light">
+            <Stack gap="xs">
+              <Group justify="space-between" wrap="nowrap">
+                <Text ff="monospace" fw={600}>
+                  {generated}
+                </Text>
+                <CopyButton value={generated} timeout={2000}>
+                  {({ copied, copy }) => (
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color={copied ? "teal" : "gray"}
+                      leftSection={
+                        copied ? <IconCheck size={14} /> : <IconCopy size={14} />
+                      }
+                      onClick={copy}
+                    >
+                      {copied ? "Gekopieerd" : "Kopiëren"}
+                    </Button>
+                  )}
+                </CopyButton>
+              </Group>
+              <Text size="xs" c="dimmed">
+                Deel dit met {staff.name}. Bij de volgende keer inloggen moet een
+                nieuw wachtwoord worden ingesteld.
+              </Text>
+            </Stack>
+          </Alert>
+        ) : (
+          <>
+            <Text size="xs" c="dimmed">
+              Genereert een tijdelijk wachtwoord. De medewerker stelt bij de
+              volgende keer inloggen zelf een nieuw wachtwoord in en bestaande
+              sessies worden afgemeld.
+            </Text>
+            <Button
+              variant="light"
+              color="orange"
+              leftSection={<IconKey size={16} />}
+              loading={resetting}
+              onClick={handleReset}
+            >
+              Wachtwoord genereren
+            </Button>
+          </>
+        )}
       </Stack>
     </form>
   );

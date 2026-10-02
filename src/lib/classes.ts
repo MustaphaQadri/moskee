@@ -27,6 +27,7 @@ export type ClassStudentDTO = {
   lastName: string;
   sex: Sex | null;
   dateOfBirth: string | null;
+  image: string | null;
 };
 
 export type ClassDetailDTO = {
@@ -39,7 +40,6 @@ export type ClassDetailDTO = {
     subjects: {
       id: string;
       name: string;
-      competencies: { id: string; name: string }[];
     }[];
   } | null;
   room: { id: string; name: string } | null;
@@ -60,6 +60,30 @@ export type EnrollableStudentDTO = {
   lastName: string;
   currentClass: { id: string; name: string } | null;
 };
+
+export type ClassOptionDTO = {
+  id: string;
+  name: string;
+  levelName: string | null;
+};
+
+// Minimal class list for pickers (e.g. moving students). Optionally excludes one
+// class (the current one).
+export async function listClassOptions(
+  excludeId?: string,
+): Promise<ClassOptionDTO[]> {
+  const classes = await prisma.schoolClass.findMany({
+    where: excludeId ? { id: { not: excludeId } } : undefined,
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, level: { select: { name: true } } },
+  });
+
+  return classes.map((schoolClass) => ({
+    id: schoolClass.id,
+    name: schoolClass.name,
+    levelName: schoolClass.level?.name ?? null,
+  }));
+}
 
 // Grid of classes, filtered to the teacher's own classes when applicable.
 export async function listClasses(params: {
@@ -145,11 +169,6 @@ export async function getClassDetail(
             select: {
               id: true,
               name: true,
-              competencies: {
-                where: { isActive: true },
-                orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-                select: { id: true, name: true },
-              },
             },
           },
         },
@@ -179,6 +198,7 @@ export async function getClassDetail(
               lastName: true,
               sex: true,
               dateOfBirth: true,
+              image: true,
             },
           },
         },
@@ -195,6 +215,7 @@ export async function getClassDetail(
       lastName: student.lastName,
       sex: student.sex,
       dateOfBirth: toDateOnly(student.dateOfBirth),
+      image: student.image,
     }))
     .sort((a, b) =>
       `${a.lastName} ${a.firstName}`.localeCompare(

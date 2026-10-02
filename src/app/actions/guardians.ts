@@ -48,12 +48,12 @@ const guardianFields = {
 const studentFields = {
   firstName: z.string().trim().min(1, "Voornaam is verplicht").max(100),
   lastName: z.string().trim().min(1, "Achternaam is verplicht").max(100),
-  sex: z.enum(["MALE", "FEMALE", "OTHER"]).nullish(),
+  sex: z.enum(["MALE", "FEMALE"]).nullish(),
   dateOfBirth: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Geboortedatum is verplicht (jjjj-mm-dd)"),
   relation: optionalText(50),
-  isPrimary: z.boolean().optional().default(false),
+  image: optionalText(500),
 };
 
 const studentSchema = z.object(studentFields);
@@ -82,6 +82,7 @@ function studentData(student: z.infer<typeof studentSchema>) {
     lastName: student.lastName,
     sex: student.sex ?? null,
     dateOfBirth: parseDateOnly(student.dateOfBirth),
+    image: student.image,
   };
 }
 
@@ -141,7 +142,6 @@ export async function createGuardianWithStudents(
         children: {
           create: parsed.students.map((student) => ({
             relation: student.relation,
-            isPrimary: student.isPrimary,
             student: { create: studentData(student) },
           })),
         },
@@ -199,7 +199,6 @@ export async function addStudentToGuardian(input: unknown): Promise<ActionResult
       data: {
         guardian: { connect: { id: parsed.guardianId } },
         relation: parsed.relation,
-        isPrimary: parsed.isPrimary,
         student: { create: studentData(parsed) },
       },
     });
@@ -212,7 +211,7 @@ export async function addStudentToGuardian(input: unknown): Promise<ActionResult
   }
 }
 
-// Update a student and the relation/isPrimary of the link to this guardian.
+// Update a student and the relation of the link to this guardian.
 export async function updateStudent(input: unknown): Promise<ActionResult> {
   await requireManager();
   try {
@@ -230,7 +229,7 @@ export async function updateStudent(input: unknown): Promise<ActionResult> {
             guardianId: parsed.guardianId,
           },
         },
-        data: { relation: parsed.relation, isPrimary: parsed.isPrimary },
+        data: { relation: parsed.relation },
       }),
     ]);
 

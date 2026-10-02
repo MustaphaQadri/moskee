@@ -18,6 +18,7 @@ const score = z.number().int().min(1).max(10);
 const saveSchema = z.object({
   classId: z.string().min(1),
   termId: z.string().min(1),
+  academicYearId: z.string().min(1),
   entries: z
     .array(
       z.object({
@@ -31,9 +32,9 @@ const saveSchema = z.object({
     .min(1),
 });
 
-// Bulk upsert the grade sheet for one class + term. Idempotent thanks to the
-// (student, subject, term) unique key. Empty cells (no score, no remark) are
-// deleted so the sheet can be cleared.
+// Bulk upsert the grade sheet for one class + term + academic year. Idempotent
+// thanks to the (student, subject, term, year) unique key. Empty cells (no
+// score, no remark) are deleted so the sheet can be cleared.
 export async function saveGrades(
   input: unknown,
 ): Promise<ClassGradeSheetDTO | null> {
@@ -42,15 +43,20 @@ export async function saveGrades(
 
   await assertCanManageClass(parsed.classId, staff);
 
-  const [schoolClass, term] = await Promise.all([
+  const [schoolClass, term, academicYear] = await Promise.all([
     prisma.schoolClass.findUnique({
       where: { id: parsed.classId },
       select: { levelId: true },
     }),
     prisma.term.findUnique({ where: { id: parsed.termId }, select: { id: true } }),
+    prisma.academicYear.findUnique({
+      where: { id: parsed.academicYearId },
+      select: { id: true },
+    }),
   ]);
   if (!schoolClass) throw new Error("Class not found or not accessible");
   if (!term) throw new Error("Term not found");
+  if (!academicYear) throw new Error("Academic year not found");
 
   // Every subject must belong to the class's level.
   const subjectIds = [...new Set(parsed.entries.map((entry) => entry.subjectId))];
@@ -76,15 +82,17 @@ export async function saveGrades(
             studentId: entry.studentId,
             subjectId: entry.subjectId,
             termId: parsed.termId,
+            academicYearId: parsed.academicYearId,
           },
         });
       }
       return prisma.grade.upsert({
         where: {
-          studentId_subjectId_termId: {
+          studentId_subjectId_termId_academicYearId: {
             studentId: entry.studentId,
             subjectId: entry.subjectId,
             termId: parsed.termId,
+            academicYearId: parsed.academicYearId,
           },
         },
         create: {
@@ -92,6 +100,7 @@ export async function saveGrades(
           classId: parsed.classId,
           subjectId: entry.subjectId,
           termId: parsed.termId,
+          academicYearId: parsed.academicYearId,
           score: entry.score ?? null,
           remark,
           recordedById: staff.userId,
@@ -106,7 +115,11 @@ export async function saveGrades(
     }),
   );
 
-  return getClassGradeSheet({ classId: parsed.classId, termId: parsed.termId });
+  return getClassGradeSheet({
+    classId: parsed.classId,
+    termId: parsed.termId,
+    academicYearId: parsed.academicYearId,
+  });
 }
 
 // Remove a single grade. Authorization is checked against the class the grade
@@ -117,16 +130,18 @@ export async function deleteGrade(input: unknown): Promise<void> {
       studentId: z.string().min(1),
       subjectId: z.string().min(1),
       termId: z.string().min(1),
+      academicYearId: z.string().min(1),
     })
     .parse(input);
   const staff = await requireStaff();
 
   const grade = await prisma.grade.findUnique({
     where: {
-      studentId_subjectId_termId: {
+      studentId_subjectId_termId_academicYearId: {
         studentId: parsed.studentId,
         subjectId: parsed.subjectId,
         termId: parsed.termId,
+        academicYearId: parsed.academicYearId,
       },
     },
     select: { classId: true },
@@ -137,10 +152,11 @@ export async function deleteGrade(input: unknown): Promise<void> {
 
   await prisma.grade.delete({
     where: {
-      studentId_subjectId_termId: {
+      studentId_subjectId_termId_academicYearId: {
         studentId: parsed.studentId,
         subjectId: parsed.subjectId,
         termId: parsed.termId,
+        academicYearId: parsed.academicYearId,
       },
     },
   });

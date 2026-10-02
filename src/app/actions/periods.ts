@@ -5,55 +5,81 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/authorization";
-import { parseDateOnly } from "@/lib/dates";
 import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
-import { optionalDate, requiredInt } from "@/lib/validation";
+import { requiredInt } from "@/lib/validation";
 
-// Manager-only CRUD for terms ("periodes" in the UI). A term owns grades, so it
-// cannot be deleted while graded. Terms are unique per year by name and order.
+// Manager-only CRUD for terms ("periodes" in the UI). Terms are **global**
+// period definitions (name, order, month range) applied to every academic year;
+// concrete dates are derived per year. A term with grades cannot be deleted.
 
-const createSchema = z.object({
-  academicYearId: z.string().min(1),
-  name: z.string().trim().min(1, "Naam is verplicht").max(100),
-  sortOrder: requiredInt(1),
-  startDate: optionalDate,
-  endDate: optionalDate,
-});
+const name = z.string().trim().min(1, "Naam is verplicht").max(100);
 
-const updateSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().trim().min(1, "Naam is verplicht").max(100),
-  sortOrder: requiredInt(1),
-  startDate: optionalDate,
-  endDate: optionalDate,
-});
+// Mantine Select/NumberInput emit strings; coerce to a 1-12 month number.
+const month = z.preprocess(
+  (value) =>
+    value === "" || value === null || value === undefined ? undefined : Number(value),
+  z
+    .number({ error: "Kies een maand" })
+    .int()
+    .min(1, "Kies een maand")
+    .max(12, "Kies een maand"),
+);
 
-function parseBounds(startDate?: string | null, endDate?: string | null) {
-  return {
-    startDate: startDate ? parseDateOnly(startDate) : null,
-    endDate: endDate ? parseDateOnly(endDate) : null,
-  };
-}
+const rangeSchema = z
+  .object({
+    startMonth: month,
+    endMonth: month,
+  })
+  .refine((value) => value.endMonth >= value.startMonth, {
+    message: "Eindmaand mag niet voor de startmaand liggen",
+    path: ["endMonth"],
+  });
 
-// (academicYearId, name) and (academicYearId, sortOrder) are unique.
-async function assertFree(
-  academicYearId: string,
-  nameValue: string,
-  sortOrder: number,
-  excludeId?: string,
-) {
+const createSchema = rangeSchema.and(
+  z.object({
+    name,
+    sortOrder: requiredInt(1),
+  }),
+);
+
+const updateSchema = rangeSchema.and(
+  z.object({
+    id: z.string().min(1),
+    name,
+    sortOrder: requiredInt(1),
+  }),
+);
+
+// (name) and (sortOrder) are globally unique.
+async function assertFree(nameValue: string, sortOrder: number, excludeId?: string) {
   const clash = await prisma.term.findFirst({
     where: {
-      academicYearId,
       OR: [{ name: nameValue }, { sortOrder }],
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
     select: { name: true, sortOrder: true },
   });
   if (clash) {
-    throw new ActionError(
-      "Er bestaat al een periode met deze naam of volgorde in dit schooljaar",
-    );
+    throw new ActionError("Er bestaat al een periode met deze naam of volgorde");
+  }
+}
+
+// Periods stay within one calendar year, so month ranges overlap when both
+// boundaries fall inside each other's span.
+async function assertNoOverlap(
+  startMonth: number,
+  endMonth: number,
+  excludeId?: string,
+) {
+  const terms = await prisma.term.findMany({
+    where: excludeId ? { id: { not: excludeId } } : undefined,
+    select: { name: true, startMonth: true, endMonth: true },
+  });
+  const clash = terms.find(
+    (term) => startMonth <= term.endMonth && term.startMonth <= endMonth,
+  );
+  if (clash) {
+    throw new ActionError(`Deze maanden overlappen met "${clash.name}"`);
   }
 }
 
@@ -63,14 +89,15 @@ export async function createTerm(
   await requireManager();
   try {
     const parsed = createSchema.parse(input);
-    await assertFree(parsed.academicYearId, parsed.name, parsed.sortOrder);
+    await assertFree(parsed.name, parsed.sortOrder);
+    await assertNoOverlap(parsed.startMonth, parsed.endMonth);
 
     const term = await prisma.term.create({
       data: {
-        academicYearId: parsed.academicYearId,
         name: parsed.name,
         sortOrder: parsed.sortOrder,
-        ...parseBounds(parsed.startDate, parsed.endDate),
+        startMonth: parsed.startMonth,
+        endMonth: parsed.endMonth,
       },
       select: { id: true },
     });
@@ -86,25 +113,16 @@ export async function updateTerm(input: unknown): Promise<ActionResult> {
   await requireManager();
   try {
     const parsed = updateSchema.parse(input);
-
-    const existing = await prisma.term.findUnique({
-      where: { id: parsed.id },
-      select: { academicYearId: true },
-    });
-    if (!existing) throw new ActionError("Periode niet gevonden");
-    await assertFree(
-      existing.academicYearId,
-      parsed.name,
-      parsed.sortOrder,
-      parsed.id,
-    );
+    await assertFree(parsed.name, parsed.sortOrder, parsed.id);
+    await assertNoOverlap(parsed.startMonth, parsed.endMonth, parsed.id);
 
     await prisma.term.update({
       where: { id: parsed.id },
       data: {
         name: parsed.name,
         sortOrder: parsed.sortOrder,
-        ...parseBounds(parsed.startDate, parsed.endDate),
+        startMonth: parsed.startMonth,
+        endMonth: parsed.endMonth,
       },
     });
 
@@ -115,21 +133,18 @@ export async function updateTerm(input: unknown): Promise<ActionResult> {
   }
 }
 
-// Reorder all terms of a year. Runs in two passes (negative, then final) so the
-// (academicYearId, sortOrder) unique constraint is never transiently violated.
+// Reorder all periods. Runs in two passes (negative, then final) so the
+// (sortOrder) unique constraint is never transiently violated.
 export async function reorderTerms(input: unknown): Promise<ActionResult> {
   await requireManager();
   try {
-    const { academicYearId, orderedIds } = z
-      .object({
-        academicYearId: z.string().min(1),
-        orderedIds: z.array(z.string().min(1)).min(1),
-      })
+    const { orderedIds } = z
+      .object({ orderedIds: z.array(z.string().min(1)).min(1) })
       .parse(input);
 
-    const count = await prisma.term.count({ where: { academicYearId } });
+    const count = await prisma.term.count();
     if (count !== orderedIds.length) {
-      throw new ActionError("Geef alle periodes van het schooljaar door");
+      throw new ActionError("Geef alle periodes door");
     }
 
     await prisma.$transaction(async (tx) => {

@@ -9,7 +9,8 @@ import { parseDateOnly } from "@/lib/dates";
 import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
 import { optionalDate } from "@/lib/validation";
 
-// Manager-only CRUD for academic years. A year owns terms; terms own grades.
+// Manager-only CRUD for academic years. Terms (periods) are global; a year owns
+// the grades and donations recorded in it.
 
 const name = z.string().trim().min(1, "Naam is verplicht").max(100);
 
@@ -114,7 +115,7 @@ export async function deleteAcademicYear(input: unknown): Promise<ActionResult> 
     const { id } = z.object({ id: z.string().min(1) }).parse(input);
 
     const [grades, donations] = await Promise.all([
-      prisma.grade.count({ where: { term: { academicYearId: id } } }),
+      prisma.grade.count({ where: { academicYearId: id } }),
       prisma.studentDonation.count({ where: { academicYearId: id } }),
     ]);
     if (grades > 0) {

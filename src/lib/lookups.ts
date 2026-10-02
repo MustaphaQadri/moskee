@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
 
 // Read side of the managed lookup sets: levels, rooms (classrooms), weekend
-// timeslots, academic years, terms, subjects and competencies. Server-only.
+// timeslots, academic years, terms and subjects. Server-only.
 
 export type LevelDTO = {
   id: string;
@@ -37,25 +37,18 @@ export type AcademicYearDTO = {
 
 export type TermRowDTO = {
   id: string;
-  academicYearId: string;
   name: string;
   sortOrder: number;
-  startDate: string | null;
-  endDate: string | null;
+  startMonth: number;
+  endMonth: number;
 };
 
 export type SubjectOptionDTO = {
   id: string;
   levelId: string;
   name: string;
-  sortOrder: number | null;
-  isActive: boolean;
-};
-
-export type CompetencyDTO = {
-  id: string;
-  subjectId: string;
-  name: string;
+  description: string | null;
+  image: string | null;
   sortOrder: number | null;
   isActive: boolean;
 };
@@ -115,24 +108,8 @@ export async function listAllSubjects(): Promise<SubjectOptionDTO[]> {
       id: true,
       levelId: true,
       name: true,
-      sortOrder: true,
-      isActive: true,
-    },
-  });
-}
-
-// Every competency (all subjects), for the management screen.
-export async function listAllCompetencies(): Promise<CompetencyDTO[]> {
-  return prisma.competency.findMany({
-    orderBy: [
-      { subjectId: "asc" },
-      { sortOrder: "asc" },
-      { name: "asc" },
-    ],
-    select: {
-      id: true,
-      subjectId: true,
-      name: true,
+      description: true,
+      image: true,
       sortOrder: true,
       isActive: true,
     },
@@ -160,26 +137,15 @@ export async function listAcademicYears(): Promise<AcademicYearDTO[]> {
   }));
 }
 
-export async function listTerms(academicYearId?: string): Promise<TermRowDTO[]> {
-  const terms = await prisma.term.findMany({
-    where: academicYearId ? { academicYearId } : undefined,
-    orderBy: [{ academicYearId: "asc" }, { sortOrder: "asc" }],
+export async function listTerms(): Promise<TermRowDTO[]> {
+  return prisma.term.findMany({
+    orderBy: { sortOrder: "asc" },
     select: {
       id: true,
-      academicYearId: true,
       name: true,
       sortOrder: true,
-      startDate: true,
-      endDate: true,
+      startMonth: true,
+      endMonth: true,
     },
   });
-
-  return terms.map((term) => ({
-    id: term.id,
-    academicYearId: term.academicYearId,
-    name: term.name,
-    sortOrder: term.sortOrder,
-    startDate: toDateOnly(term.startDate),
-    endDate: toDateOnly(term.endDate),
-  }));
 }

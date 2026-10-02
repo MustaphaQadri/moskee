@@ -6,16 +6,21 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/authorization";
 import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
-import { optionalInt } from "@/lib/validation";
+import { optionalInt, optionalText } from "@/lib/validation";
 
 // Manager-only CRUD for subjects. Subjects are scoped to a level ("Math" exists
 // once per level). A subject with grades cannot be deleted.
 
 const name = z.string().trim().min(1, "Naam is verplicht").max(100);
 
+const description = optionalText(500);
+const image = optionalText(500);
+
 const createSchema = z.object({
   levelId: z.string().min(1),
   name,
+  description,
+  image,
   sortOrder: optionalInt(0),
   isActive: z.boolean().optional(),
 });
@@ -23,6 +28,8 @@ const createSchema = z.object({
 const updateSchema = z.object({
   id: z.string().min(1),
   name,
+  description,
+  image,
   sortOrder: optionalInt(0),
   isActive: z.boolean(),
 });
@@ -57,6 +64,8 @@ export async function createSubject(
       data: {
         levelId: parsed.levelId,
         name: parsed.name,
+        description: parsed.description,
+        image: parsed.image,
         sortOrder: parsed.sortOrder ?? null,
         isActive: parsed.isActive ?? true,
       },
@@ -86,6 +95,8 @@ export async function updateSubject(input: unknown): Promise<ActionResult> {
       where: { id: parsed.id },
       data: {
         name: parsed.name,
+        description: parsed.description,
+        image: parsed.image,
         sortOrder: parsed.sortOrder ?? null,
         isActive: parsed.isActive,
       },

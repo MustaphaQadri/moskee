@@ -1,6 +1,6 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { hashPassword } from "better-auth/crypto";
@@ -62,6 +62,19 @@ function toError(error: unknown): string {
 
 async function managerCount(): Promise<number> {
   return prisma.user.count({ where: { role: "manager" } });
+}
+
+// Human-friendly, unambiguous alphabet (no 0/O/1/l/I).
+const PASSWORD_ALPHABET =
+  "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+
+function generatePassword(length = 12): string {
+  const bytes = randomBytes(length);
+  let password = "";
+  for (let i = 0; i < length; i++) {
+    password += PASSWORD_ALPHABET[bytes[i] % PASSWORD_ALPHABET.length];
+  }
+  return password;
 }
 
 // Create a staff account (manager or teacher) with an email/password login.
@@ -136,6 +149,54 @@ export async function updateStaff(input: unknown): Promise<StaffActionResult> {
 
     revalidatePath("/dashboard/staff");
     return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toError(error) };
+  }
+}
+
+// Reset a staff member's password: generate a random one, store its hash, force
+// a change on next sign-in and revoke their active sessions. Returns the
+// plaintext password once so the manager can hand it to the staff member.
+export async function resetStaffPassword(
+  input: unknown,
+): Promise<StaffActionResult<{ password: string }>> {
+  await requireManager();
+  try {
+    const parsed = deleteSchema.parse(input);
+
+    const target = await prisma.user.findUnique({
+      where: { id: parsed.id },
+      select: {
+        id: true,
+        accounts: {
+          where: { providerId: "credential" },
+          select: { id: true },
+        },
+      },
+    });
+    if (!target) throw new ActionError("Medewerker niet gevonden");
+    const account = target.accounts[0];
+    if (!account) {
+      throw new ActionError("Dit account heeft geen wachtwoord-login");
+    }
+
+    const password = generatePassword();
+    const hashed = await hashPassword(password);
+
+    await prisma.$transaction([
+      prisma.account.update({
+        where: { id: account.id },
+        data: { password: hashed },
+      }),
+      prisma.user.update({
+        where: { id: parsed.id },
+        data: { mustChangePassword: true },
+      }),
+      prisma.session.deleteMany({ where: { userId: parsed.id } }),
+    ]);
+
+    revalidatePath("/dashboard/staff");
+    return { ok: true, data: { password } };
   } catch (error) {
     return { ok: false, error: toError(error) };
   }

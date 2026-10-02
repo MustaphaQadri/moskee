@@ -61,6 +61,7 @@ erDiagram
         text lastName
         Sex sex
         timestamp dateOfBirth
+        text image "url under /uploads/students"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -83,7 +84,6 @@ erDiagram
         text studentId FK,UK "unique per guardian"
         text guardianId FK,UK "unique per student"
         text relation "mother | father | ..."
-        boolean isPrimary
         timestamp createdAt
         timestamp updatedAt
     }
@@ -184,11 +184,10 @@ erDiagram
 
     terms {
         text id PK
-        text academicYearId FK,UK "unique per name and per sortOrder"
-        text name "Period 1"
-        integer sortOrder
-        timestamp startDate
-        timestamp endDate
+        text name UK "Termijn 1"
+        integer sortOrder UK
+        integer startMonth "1..12"
+        integer endMonth "1..12, >= startMonth"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -197,16 +196,8 @@ erDiagram
         text id PK
         text levelId FK,UK "unique per name"
         text name "Math"
-        integer sortOrder
-        boolean isActive
-        timestamp createdAt
-        timestamp updatedAt
-    }
-
-    competencies {
-        text id PK
-        text subjectId FK,UK "unique per name"
-        text name "vaardigheid"
+        text description
+        text image "url under /uploads/subjects"
         integer sortOrder
         boolean isActive
         timestamp createdAt
@@ -219,7 +210,7 @@ erDiagram
         text classId FK,UK "unique per student+session+date"
         text sessionId FK,UK "unique per student+class+date"
         timestamp date "DATE (UTC midnight)"
-        AttendanceStatus status "PRESENT | ABSENT | LATE | EXCUSED"
+        AttendanceStatus status "PRESENT | LATE | VERY_LATE | ABSENT | EXCUSED"
         text note
         text recordedById FK
         timestamp createdAt
@@ -228,10 +219,11 @@ erDiagram
 
     grades {
         text id PK
-        text studentId FK,UK "unique per subject+term"
+        text studentId FK,UK "unique per subject+term+year"
         text classId FK
-        text subjectId FK,UK "unique per student+term"
-        text termId FK,UK "unique per student+subject"
+        text subjectId FK,UK "unique per student+term+year"
+        text termId FK,UK "unique per student+subject+year"
+        text academicYearId FK,UK "unique per student+subject+term"
         integer score "1..10 or null"
         text remark
         text recordedById FK
@@ -289,12 +281,11 @@ erDiagram
     User |o--o{ attendance : "records"
 
     levels ||--o{ subjects : "offers"
-    subjects ||--o{ competencies : "covers"
-    academic_years ||--o{ terms : "contains"
     terms ||--o{ grades : "assesses"
     subjects ||--o{ grades : "graded in"
     students ||--o{ grades : "earns"
     classes ||--o{ grades : "records"
+    academic_years ||--o{ grades : "scopes"
     User |o--o{ grades : "records"
 
     students ||--o{ student_donations : "donates"
@@ -312,13 +303,12 @@ erDiagram
   `class_session_links (classId, sessionId)`,
   `enrollments (studentId, classId)`,
   `attendance (studentId, classId, sessionId, date)`,
-  `terms (academicYearId, name)` and `(academicYearId, sortOrder)`,
+  `terms (name)` and `(sortOrder)` (global periods),
   `subjects (levelId, name)`,
-  `competencies (subjectId, name)`,
-  `grades (studentId, subjectId, termId)`,
+  `grades (studentId, subjectId, termId, academicYearId)`,
   `student_donations (studentId, academicYearId)`.
-- `Sex` is a PostgreSQL enum: `MALE | FEMALE | OTHER`; `AttendanceStatus` is
-  `PRESENT | ABSENT | LATE | EXCUSED`; `DonationCategory` is
+- `Sex` is a PostgreSQL enum: `MALE | FEMALE`; `AttendanceStatus` is
+  `PRESENT | LATE | VERY_LATE | ABSENT | EXCUSED`; `DonationCategory` is
   `FULL | REDUCED | EXEMPT`.
 - `_prisma_migrations` (Prisma's bookkeeping table) is omitted — infrastructure,
   not application data.

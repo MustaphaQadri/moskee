@@ -7,9 +7,16 @@
 Framework + scaffold + data model complete. DB migrated and seeded.
 Sign-in, dashboard shell (role-aware nav + light/dark toggle), subscription
 management under "Inschrijvingen", staff (manager/teacher) management, a Beheer
-screen (levels, rooms, subjects, competencies, timeslots, academic years,
-terms), and classes (grid, detail, enrollment/move, student comments) are built.
-Attendance and grades UI is next (their buttons exist but are disabled).
+screen (levels, rooms, subjects, timeslots, academic years, global periods),
+and classes (grid, detail, enrollment/move, student comments) are built.
+Subjects and students support an optional uploaded image; periods are defined
+once by month range and applied to every year. Managers can reset a staff
+password (generates a temporary one; the user must set a new one on next
+sign-in), and bulk-move or remove selected students from a class's roster (with
+confirmation). Attendance is built: a per-meeting sheet from the class detail
+(slot/date preselected, Aanwezig/Te laat/Erg laat/Afwezig/Geoorloofd) with a pie
+chart, plus attendance summaries and non-present days on the student detail.
+Grades UI is next (its button is still disabled).
 
 - Next.js 16 (App Router) · Mantine 9 · Better Auth 1.7 · Prisma 7 + PostgreSQL · pnpm
 - `pnpm build`, `pnpm lint`, `pnpm typecheck` all green. Dev server smoke-tested.
@@ -36,10 +43,11 @@ gained a `phone` column. All domain tables have `id` (cuid) + `createdAt` +
 - `Student` (`students`) — firstName, lastName, `sex` (enum), dateOfBirth.
 - `Guardian` (`guardians`) — firstName, lastName, email, phone, address,
   `donationNumber?` + `educationNumber?` (optional, unique — subscription ids).
-- `StudentGuardian` (`student_guardians`) — M:N student↔guardian + `relation`, `isPrimary`.
+- `StudentGuardian` (`student_guardians`) — M:N student↔guardian + `relation`.
 - `Room` / `Level` / `ClassSession` — managed lookup sets. `ClassSession` holds the
   weekend slots via `label`/`day`/`startTime`/`endTime` (the old `period` column
-  was removed). Subjects carry `Competency` rows ("vaardigheden") via `Subject.competencies`.
+  was removed). Subjects carry `description?` + `image?`; `Competency`
+  ("vaardigheden") was removed.
 - `SchoolClass` (`classes`) — name, description, level (required), room?, teacher?.
 - `SchoolClassSession` (`class_session_links`) — M:N class↔session.
 - `Enrollment` (`enrollments`) — M:N student↔class + dates/status.
@@ -66,8 +74,8 @@ gained a `phone` column. All domain tables have `id` (cuid) + `createdAt` +
    classes grid + detail, enroll/move students (manager-only), and per-student
    comments (add by staff, delete by managers).~~ Done. `seed.ts` also creates the
    6 default timeslots.
-6. Attendance UI (take attendance per class meeting; button on class detail is
-   disabled for now).
+6. ~~Attendance UI (per-meeting sheet from the class detail; student summaries
+   with pie chart + non-present days).~~ Done (`/dashboard/classes/[id]/attendance`).
 7. Grades UI (grade sheets per class/term, subjects per level; button disabled).
 8. Enrollments from the guardian registration flow (currently only via classes).
 

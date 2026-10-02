@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useForm } from "@mantine/form";
 import {
+  Alert,
   Button,
   Group,
   Modal,
@@ -21,31 +22,46 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconPencil, IconPlus } from "@tabler/icons-react";
+import { IconInfoCircle, IconPencil, IconPlus } from "@tabler/icons-react";
 
 import { createTerm, deleteTerm, updateTerm } from "@/app/actions/periods";
 import { ConfirmDeleteButton } from "./confirm-delete";
 import { useActionFeedback } from "./use-action-feedback";
-import type { AcademicYearRow } from "./academic-years-panel";
 
 export type TermRow = {
   id: string;
-  academicYearId: string;
   name: string;
   sortOrder: number;
-  startDate: string | null;
-  endDate: string | null;
+  startMonth: number;
+  endMonth: number;
 };
 
-function TermForm({
-  academicYearId,
-  term,
-  onDone,
-}: {
-  academicYearId: string;
-  term: TermRow | null;
-  onDone: () => void;
-}) {
+const MONTHS = [
+  "januari",
+  "februari",
+  "maart",
+  "april",
+  "mei",
+  "juni",
+  "juli",
+  "augustus",
+  "september",
+  "oktober",
+  "november",
+  "december",
+];
+
+const MONTH_OPTIONS = MONTHS.map((label, index) => ({
+  value: String(index + 1),
+  label: `${label.charAt(0).toUpperCase()}${label.slice(1)}`,
+}));
+
+function monthLabel(month: number): string {
+  const label = MONTHS[month - 1] ?? String(month);
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
+}
+
+function TermForm({ term, onDone }: { term: TermRow | null; onDone: () => void }) {
   const handleResult = useActionFeedback();
   const [loading, setLoading] = useState(false);
 
@@ -53,21 +69,31 @@ function TermForm({
     initialValues: {
       name: term?.name ?? "",
       sortOrder: term?.sortOrder ?? 1,
-      startDate: term?.startDate ?? "",
-      endDate: term?.endDate ?? "",
+      startMonth: String(term?.startMonth ?? 9),
+      endMonth: String(term?.endMonth ?? 12),
     },
     validate: {
       name: (value) => (value.trim() ? null : "Naam is verplicht"),
       sortOrder: (value) =>
         value && value >= 1 ? null : "Volgorde moet minstens 1 zijn",
+      endMonth: (value, values) =>
+        Number(value) >= Number(values.startMonth)
+          ? null
+          : "Eindmaand mag niet voor de startmaand liggen",
     },
   });
 
   const handleSubmit = form.onSubmit(async (values) => {
     setLoading(true);
+    const payload = {
+      name: values.name,
+      sortOrder: values.sortOrder,
+      startMonth: Number(values.startMonth),
+      endMonth: Number(values.endMonth),
+    };
     const result = term
-      ? await updateTerm({ id: term.id, ...values })
-      : await createTerm({ academicYearId, ...values });
+      ? await updateTerm({ id: term.id, ...payload })
+      : await createTerm(payload);
     setLoading(false);
 
     if (handleResult(result, term ? "Periode bijgewerkt." : "Periode toegevoegd.")) {
@@ -81,7 +107,7 @@ function TermForm({
         <TextInput
           label="Naam"
           required
-          placeholder="bv. Periode 1"
+          placeholder="bv. Termijn 1"
           {...form.getInputProps("name")}
         />
         <NumberInput
@@ -91,17 +117,23 @@ function TermForm({
           {...form.getInputProps("sortOrder")}
         />
         <SimpleGrid cols={2}>
-          <TextInput
-            label="Startdatum"
-            type="date"
-            {...form.getInputProps("startDate")}
+          <Select
+            label="Startmaand"
+            data={MONTH_OPTIONS}
+            allowDeselect={false}
+            {...form.getInputProps("startMonth")}
           />
-          <TextInput
-            label="Einddatum"
-            type="date"
-            {...form.getInputProps("endDate")}
+          <Select
+            label="Eindmaand"
+            data={MONTH_OPTIONS}
+            allowDeselect={false}
+            {...form.getInputProps("endMonth")}
           />
         </SimpleGrid>
+        <Text size="xs" c="dimmed">
+          De periode loopt van de eerste dag van de startmaand tot de laatste dag
+          van de eindmaand.
+        </Text>
         <Group justify="flex-end">
           <Button variant="default" onClick={onDone}>
             Annuleren
@@ -115,22 +147,12 @@ function TermForm({
   );
 }
 
-export function TermsPanel({
-  years,
-  terms,
-}: {
-  years: AcademicYearRow[];
-  terms: TermRow[];
-}) {
+export function TermsPanel({ terms }: { terms: TermRow[] }) {
   const handleResult = useActionFeedback();
   const [opened, { open, close }] = useDisclosure(false);
   const [editing, setEditing] = useState<TermRow | null>(null);
-  const [yearId, setYearId] = useState<string | null>(years[0]?.id ?? null);
 
-  const selectedYearId = editing?.academicYearId ?? yearId;
-  const rows = terms
-    .filter((term) => term.academicYearId === selectedYearId)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const rows = [...terms].sort((a, b) => a.sortOrder - b.sortOrder);
 
   function openCreate() {
     setEditing(null);
@@ -144,29 +166,25 @@ export function TermsPanel({
 
   return (
     <Stack>
-      <Group justify="space-between" align="flex-end">
-        <Select
-          label="Schooljaar"
-          data={years.map((year) => ({ value: year.id, label: year.name }))}
-          value={yearId}
-          onChange={setYearId}
-          allowDeselect={false}
+      <Group justify="space-between" align="flex-start">
+        <Alert
+          variant="light"
+          color="blue"
+          icon={<IconInfoCircle size={18} />}
+          title="Periodes gelden voor alle schooljaren"
           style={{ flex: 1 }}
-          disabled={editing !== null}
-        />
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={openCreate}
-          disabled={!selectedYearId}
         >
+          Stel hier de periodes één keer in. Elk schooljaar gebruikt dezelfde
+          periodes; de datums worden per schooljaar berekend. Periodes mogen niet
+          overlappen.
+        </Alert>
+        <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
           Periode toevoegen
         </Button>
       </Group>
 
-      {!selectedYearId ? (
-        <Text c="dimmed">Maak eerst een schooljaar aan.</Text>
-      ) : rows.length === 0 ? (
-        <Text c="dimmed">Nog geen periodes voor dit schooljaar.</Text>
+      {rows.length === 0 ? (
+        <Text c="dimmed">Nog geen periodes.</Text>
       ) : (
         <TableScrollContainer minWidth={640}>
           <Table striped highlightOnHover>
@@ -174,8 +192,8 @@ export function TermsPanel({
               <TableTr>
                 <TableTh>Volgorde</TableTh>
                 <TableTh>Naam</TableTh>
-                <TableTh>Van</TableTh>
-                <TableTh>Tot</TableTh>
+                <TableTh>Startmaand</TableTh>
+                <TableTh>Eindmaand</TableTh>
                 <TableTh />
               </TableTr>
             </TableThead>
@@ -184,8 +202,8 @@ export function TermsPanel({
                 <TableTr key={term.id}>
                   <TableTd>{term.sortOrder}</TableTd>
                   <TableTd>{term.name}</TableTd>
-                  <TableTd>{term.startDate ?? "—"}</TableTd>
-                  <TableTd>{term.endDate ?? "—"}</TableTd>
+                  <TableTd>{monthLabel(term.startMonth)}</TableTd>
+                  <TableTd>{monthLabel(term.endMonth)}</TableTd>
                   <TableTd>
                     <Group gap="xs" justify="flex-end">
                       <Button
@@ -220,11 +238,7 @@ export function TermsPanel({
         onClose={close}
         title={editing ? "Periode bewerken" : "Periode toevoegen"}
       >
-        <TermForm
-          academicYearId={selectedYearId ?? ""}
-          term={editing}
-          onDone={close}
-        />
+        <TermForm term={editing} onDone={close} />
       </Modal>
     </Stack>
   );

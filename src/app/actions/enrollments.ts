@@ -15,6 +15,33 @@ const linkSchema = z.object({
   studentId: z.string().min(1),
 });
 
+const bulkRemoveSchema = z.object({
+  classId: z.string().min(1),
+  studentIds: z.array(z.string().min(1)).min(1, "Selecteer minstens één leerling"),
+});
+
+const bulkMoveSchema = z
+  .object({
+    fromClassId: z.string().min(1),
+    toClassId: z.string().min(1),
+    studentIds: z.array(z.string().min(1)).min(1, "Selecteer minstens één leerling"),
+  })
+  .refine((value) => value.fromClassId !== value.toClassId, {
+    message: "Kies een andere klas dan de huidige",
+    path: ["toClassId"],
+  });
+
+// All selected students must be actively enrolled in the source class.
+async function assertActiveInClass(classId: string, studentIds: string[]) {
+  const active = await prisma.enrollment.findMany({
+    where: { classId, status: "active", studentId: { in: studentIds } },
+    select: { studentId: true },
+  });
+  if (active.length !== studentIds.length) {
+    throw new ActionError("Niet alle geselecteerde leerlingen zitten in deze klas");
+  }
+}
+
 function revalidate(classId: string) {
   revalidatePath("/dashboard/classes");
   revalidatePath(`/dashboard/classes/${classId}`);
@@ -93,6 +120,90 @@ export async function unenrollStudent(input: unknown): Promise<ActionResult> {
 
     revalidate(parsed.classId);
     return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+// Move several students from one class to another. Each student's active
+// enrollment in the source class is withdrawn and the target class is made
+// active (creating the row if it was previously withdrawn).
+export async function moveStudents(
+  input: unknown,
+): Promise<ActionResult<{ moved: number }>> {
+  await requireManager();
+  try {
+    const parsed = bulkMoveSchema.parse(input);
+
+    const [from, to] = await Promise.all([
+      prisma.schoolClass.findUnique({
+        where: { id: parsed.fromClassId },
+        select: { id: true },
+      }),
+      prisma.schoolClass.findUnique({
+        where: { id: parsed.toClassId },
+        select: { id: true },
+      }),
+    ]);
+    if (!from) throw new ActionError("Klas niet gevonden");
+    if (!to) throw new ActionError("Doelklas niet gevonden");
+
+    await assertActiveInClass(parsed.fromClassId, parsed.studentIds);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.enrollment.updateMany({
+        where: {
+          classId: parsed.fromClassId,
+          status: "active",
+          studentId: { in: parsed.studentIds },
+        },
+        data: { status: "withdrawn", endDate: new Date() },
+      });
+
+      for (const studentId of parsed.studentIds) {
+        await tx.enrollment.upsert({
+          where: {
+            studentId_classId: { studentId, classId: parsed.toClassId },
+          },
+          create: {
+            studentId,
+            classId: parsed.toClassId,
+            status: "active",
+          },
+          update: { status: "active", endDate: null },
+        });
+      }
+    });
+
+    revalidate(parsed.fromClassId);
+    revalidate(parsed.toClassId);
+    return { ok: true, data: { moved: parsed.studentIds.length } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+// Remove several students from a class. They are withdrawn and left without a
+// class (no new enrollment is created).
+export async function removeStudentsFromClass(
+  input: unknown,
+): Promise<ActionResult<{ removed: number }>> {
+  await requireManager();
+  try {
+    const parsed = bulkRemoveSchema.parse(input);
+    await assertActiveInClass(parsed.classId, parsed.studentIds);
+
+    await prisma.enrollment.updateMany({
+      where: {
+        classId: parsed.classId,
+        status: "active",
+        studentId: { in: parsed.studentIds },
+      },
+      data: { status: "withdrawn", endDate: new Date() },
+    });
+
+    revalidate(parsed.classId);
+    return { ok: true, data: { removed: parsed.studentIds.length } };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }

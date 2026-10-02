@@ -28,6 +28,17 @@ export async function requireSession() {
   return session;
 }
 
+// Like requireSession, but also forces users who must still change their
+// password (after a manager reset) to /change-password. Use in the dashboard
+// shell; the change-password page itself uses getSession so it is reachable.
+export async function requireActiveSession() {
+  const session = await requireSession();
+  if (session.user.mustChangePassword) {
+    redirect("/change-password");
+  }
+  return session;
+}
+
 // Requires an authenticated user AND one of the given roles. Redirects
 // unauthenticated users to /sign-in and unauthorized users to /.
 export async function requireRole(...allowed: Role[]) {

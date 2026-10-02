@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
+import { sortRows, type SortDir } from "@/lib/sort";
 import type { Sex } from "@/generated/prisma/enums";
 
 // Data access for guardians and their students. Server-only: import these in
@@ -26,7 +27,7 @@ export type GuardianStudentDTO = {
   sex: Sex | null;
   dateOfBirth: string | null; // ISO yyyy-mm-dd
   relation: string | null;
-  isPrimary: boolean;
+  image: string | null;
 };
 
 export type GuardianDetailDTO = {
@@ -51,9 +52,40 @@ const SEARCH_FIELDS = [
   "educationNumber",
 ] as const;
 
+export const GUARDIAN_SORT_KEYS = [
+  "name",
+  "email",
+  "phone",
+  "donationNumber",
+  "educationNumber",
+  "studentCount",
+] as const;
+
+export type GuardianSortKey = (typeof GUARDIAN_SORT_KEYS)[number];
+
+export function isGuardianSortKey(value: unknown): value is GuardianSortKey {
+  return (GUARDIAN_SORT_KEYS as readonly string[]).includes(value as string);
+}
+
+function guardianSortValue(
+  guardian: GuardianListItemDTO,
+  key: GuardianSortKey,
+): string | number | null {
+  switch (key) {
+    case "name":
+      return `${guardian.lastName} ${guardian.firstName}`;
+    case "studentCount":
+      return guardian.studentCount;
+    default:
+      return guardian[key];
+  }
+}
+
 // List/search guardians. `search` matches name, email, phone or either number.
 export async function listGuardians(params: {
   search?: string;
+  sort?: GuardianSortKey;
+  dir?: SortDir;
 } = {}): Promise<GuardianListItemDTO[]> {
   const search = params.search?.trim();
 
@@ -78,7 +110,7 @@ export async function listGuardians(params: {
     },
   });
 
-  return guardians.map((guardian) => ({
+  const rows = guardians.map((guardian) => ({
     id: guardian.id,
     firstName: guardian.firstName,
     lastName: guardian.lastName,
@@ -88,6 +120,10 @@ export async function listGuardians(params: {
     educationNumber: guardian.educationNumber,
     studentCount: guardian._count.children,
   }));
+
+  return sortRows(rows, params.dir ?? "asc", (guardian) =>
+    guardianSortValue(guardian, params.sort ?? "name"),
+  );
 }
 
 // One guardian with all linked students (and the relation of each link).
@@ -107,10 +143,9 @@ export async function getGuardianDetail(
       educationNumber: true,
       createdAt: true,
       children: {
-        orderBy: [{ isPrimary: "desc" }, { student: { firstName: "asc" } }],
+        orderBy: { student: { firstName: "asc" } },
         select: {
           relation: true,
-          isPrimary: true,
           student: {
             select: {
               id: true,
@@ -118,6 +153,7 @@ export async function getGuardianDetail(
               lastName: true,
               sex: true,
               dateOfBirth: true,
+              image: true,
             },
           },
         },
@@ -144,7 +180,7 @@ export async function getGuardianDetail(
       sex: link.student.sex,
       dateOfBirth: toDateOnly(link.student.dateOfBirth),
       relation: link.relation,
-      isPrimary: link.isPrimary,
+      image: link.student.image,
     })),
   };
 }

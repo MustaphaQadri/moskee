@@ -6,12 +6,12 @@ What Moskee does, in product terms. This is the companion to
 
 > **Status.** Built: authentication; dashboard shell; subscriptions
 > (guardians/students); staff management; a Beheer screen for levels, rooms,
-> subjects, competencies (vaardigheden), timeslots, academic years and terms;
+> subjects, timeslots, academic years and periods;
 > and classes (grid, detail, enroll/move students, per-student comments).
-> Attendance and grades have data layers and actions but **no UI yet** (their
-> buttons on the class detail are disabled). Reports and donations UI are also
-> not built. This document describes the intended behaviour those pages will
-> expose.
+> **Attendance** has a UI (per-meeting sheet and student summaries); grades still
+> only have a data layer and actions (**no UI yet**, its button on the class
+> detail is disabled). Reports and donations UI are also not built. This document
+> describes the intended behaviour those pages will expose.
 
 ## Purpose
 
@@ -45,8 +45,8 @@ Moskee manages a small weekend school:
 | **Class**           | A group of students taught at a level, optionally in a room by a teacher. |
 | **Session slot**    | A recurring weekend timeslot: a day (from a fixed Dutch dropdown) plus a start and end time. |
 | **Meeting**         | A dated occurrence of a class in a session slot — `(class, slot, date)`. |
-| **Academic year**   | e.g. "2026-2027"; contains the terms. One is current.                   |
-| **Term / Period**   | A period within a year, with optional date bounds.                      |
+| **Academic year**   | e.g. "2026-2027"; scopes the grades and donations. One is current.      |
+| **Term / Period**   | A recurring period defined by months (e.g. Sept–Dec), shared by every year. |
 | **Subject**         | A subject offered at a level ("Math"); the same name exists once per level. |
 | **Enrollment**      | The link between a student and a class, with start/end dates and status. |
 | **Grade**           | A student's score in one subject for one term (1–10, or blank).         |
@@ -56,12 +56,17 @@ Moskee manages a small weekend school:
 
 ### 1. Students & guardians
 
-- A **student** has first/last name, optional sex, and date of birth.
+- A **student** has first/last name, optional sex (boy/girl), date of birth, and
+  an optional **photo** (added during enrollment; shown in the student detail,
+  the enrollment overview, and class rosters).
 - A **guardian** has first/last name, optional email, phone, and address.
 - Students and guardians are linked many-to-many; each link records the
-  **relation** ("mother", "father", "aunt", …) and whether it is the **primary**
-  guardian. A guardian can be related differently to different children.
+  **relation** ("mother", "father", "aunt", …). A guardian can be related
+  differently to different children.
 - Both students and guardians can carry free-text comments from staff.
+- The **Inschrijvingen** overview has two tabs: **Ouders/verzorgers** (guardian
+  list) and **Leerlingen** (student list, showing each student's class and
+  linked guardians).
 
 ### 2. Classes & scheduling
 
@@ -79,41 +84,59 @@ Moskee manages a small weekend school:
 - Only **active** enrollments appear on rosters and can be marked/graded.
 - Working assumption: **one class per student per term** (a class teaches all
   subjects for its level).
+- In a class, a manager can select multiple students and **move** them to
+  another class, or **remove** them from the class (they are left without a
+  class). Both actions ask for confirmation first.
 
 ### 4. Attendance
 
 - Attendance is taken per **meeting**: a class, a session slot, and a date.
-- Each student is marked **Present**, **Absent**, **Late**, or **Excused**;
-  an optional note can be added.
+- From a class, **Aanwezigheid** opens the sheet for a chosen **tijdslot** and
+  **datum**. The closest meeting date (current day when it matches, otherwise
+  the nearest) and its timeslot are preselected.
+- Each student is marked **Aanwezig**, **Te laat**, **Erg laat**, **Afwezig**, or
+  **Geoorloofd afwezig**; **Aanwezig** is preselected. An optional **note** can
+  be added per student (shown on the student detail's absence list).
 - Re-saving a roster updates existing marks instead of duplicating them.
 - Teachers may take attendance only for their own classes; managers for any.
-- Presence rate for a period = `(Present + Late) / total marks`.
+- The sheet shows a **pie chart** (with the total in the centre) of the current
+  meeting's breakdown. The student detail shows attendance **per period**: the
+  current period's pie chart and non-present days by default, with a list of all
+  periods to switch between.
+- Presence rate for a period = `(Aanwezig + Te laat + Erg laat) / total marks`.
 
 ### 5. Academic years & terms
 
-- Each **academic year** holds its terms; exactly one year is marked **current**.
-- A **term** (labelled "Period" in the UI) has a name, an order, and optional
-  start/end dates.
-- The term's date bounds are what let reports count attendance for that period.
+- Each **academic year** scopes the grades (and donations) recorded in it;
+  exactly one year is marked **current**.
+- A **term / period** (labelled "Periode" in the UI) is defined **once, globally**
+  — name, order, and a month range (start month → end month). The same periods
+  apply to every academic year; there is no per-year list to maintain.
+- A period starts on the **first day of its start month** and ends on the **last
+  day of its end month**; periods never cross the calendar-year boundary.
+- The concrete dates are derived per academic year and are what let reports count
+  attendance for that period.
+- Periods may **not overlap** — the management screen rejects an overlapping
+  month range.
 
 ### 6. Subjects
 
 - Subjects are defined **per level**: "Math" exists once at each level as its own
   subject. A class studies the subjects of its level.
-- A subject can list **competencies** ("vaardigheden") — the skills/learning
-  goals it covers. They are descriptive and shown alongside the subject on the
-  class detail; the subject itself is what gets graded for now.
+- A subject has an optional **description** and an optional **image** (uploaded
+  by a manager).
 - Subjects have an order (column order on grade sheets) and an **active** flag to
   retire them without deleting history.
 - A subject that already has grades cannot be deleted.
 
 ### 7. Grades
 
-- A grade is one student's score in one subject for one term.
+- A grade is one student's score in one subject for one term **in one school
+  year** (a term is global, so the year is what separates years).
 - Scores are whole numbers **1–10**; a blank means **not graded yet**. An
   optional remark can be attached.
 - Grades are entered on a **class grade sheet**: the class roster (rows) against
-  the level's subjects (columns), for a chosen term.
+  the level's subjects (columns), for a chosen term and school year.
 - A grade's subject must belong to the class's level, and the student must be
   actively enrolled. Teachers edit only their own classes.
 - Averages, ranks and totals are **computed when a report is viewed**, never
@@ -166,7 +189,7 @@ Moskee manages a small weekend school:
 4. Scores are 1–10 or blank; donations are non-negative amounts (2 decimals,
    single currency).
 5. A graded term or subject, or a year with grades or donations, cannot be
-   deleted — history is protected.
+   deleted — history is protected. Periods must not overlap.
 6. At most one academic year is current.
 7. Donation amounts and payments are manager-only.
 
@@ -192,6 +215,6 @@ Moskee manages a small weekend school:
 | Yearly subject avg | mean of that subject's non-blank term scores            |
 | Overall avg      | mean of per-subject averages                               |
 | Rank             | 1 + number of classmates with a strictly higher average    |
-| Presence rate    | `(Present + Late) / total attendance marks`                |
+| Presence rate    | `(Present + Late + Very late) / total attendance marks`    |
 | Donation balance | `expectedAmount − paidAmount`                              |
 | Donation status  | Exempt / Paid / Partial / Unpaid (see above)               |

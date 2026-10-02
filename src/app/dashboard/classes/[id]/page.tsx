@@ -9,13 +9,6 @@ import {
   Paper,
   SimpleGrid,
   Stack,
-  Table,
-  TableScrollContainer,
-  TableTbody,
-  TableTd,
-  TableTh,
-  TableThead,
-  TableTr,
   Text,
   Title,
   Tooltip,
@@ -28,16 +21,14 @@ import {
 } from "@tabler/icons-react";
 
 import { requireStaff } from "@/lib/authorization";
-import { getClassDetail, listStudentsForEnrollment } from "@/lib/classes";
-import { SEX_LABELS } from "@/app/dashboard/guardians/options";
-import { AddStudentButton, RemoveStudentButton } from "./roster-dialogs";
+import {
+  getClassDetail,
+  listClassOptions,
+  listStudentsForEnrollment,
+} from "@/lib/classes";
+import { AddStudentButton } from "./roster-dialogs";
+import { RosterTable } from "./roster-table";
 import { DeleteClassButton } from "./class-actions";
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const [year, month, day] = value.split("-");
-  return `${day}-${month}-${year}`;
-}
 
 function InfoItem({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -64,6 +55,9 @@ export default async function ClassDetailPage({
   const enrollable = staff.isTeacher
     ? []
     : await listStudentsForEnrollment({ classId: schoolClass.id });
+  const moveTargets = staff.isTeacher
+    ? []
+    : await listClassOptions(schoolClass.id);
 
   return (
     <Stack gap="md">
@@ -90,17 +84,14 @@ export default async function ClassDetailPage({
         </div>
 
         <Group gap="xs">
-          <Tooltip label="Binnenkort beschikbaar">
-            <span>
-              <Button
-                variant="default"
-                disabled
-                leftSection={<IconClipboardCheck size={16} />}
-              >
-                Aanwezigheid
-              </Button>
-            </span>
-          </Tooltip>
+          <Button
+            component="a"
+            href={`/dashboard/classes/${schoolClass.id}/attendance`}
+            variant="light"
+            leftSection={<IconClipboardCheck size={16} />}
+          >
+            Aanwezigheid
+          </Button>
           <Tooltip label="Binnenkort beschikbaar">
             <span>
               <Button
@@ -155,22 +146,15 @@ export default async function ClassDetailPage({
               )}
             </Group>
           </InfoItem>
-          <InfoItem label="Vakken & vaardigheden">
+          <InfoItem label="Vakken">
             {schoolClass.level?.subjects.length ? (
-              <Stack gap={6}>
+              <Group gap={6}>
                 {schoolClass.level.subjects.map((subject) => (
-                  <div key={subject.id}>
-                    <Badge variant="light" color="grape">
-                      {subject.name}
-                    </Badge>
-                    {subject.competencies.length > 0 && (
-                      <Text size="xs" c="dimmed">
-                        {subject.competencies.map((c) => c.name).join(", ")}
-                      </Text>
-                    )}
-                  </div>
+                  <Badge key={subject.id} variant="light" color="grape">
+                    {subject.name}
+                  </Badge>
                 ))}
-              </Stack>
+              </Group>
             ) : (
               <Text c="dimmed" size="sm">
                 Nog geen vakken voor dit niveau
@@ -194,51 +178,12 @@ export default async function ClassDetailPage({
         {schoolClass.students.length === 0 ? (
           <Text c="dimmed">Nog geen leerlingen in deze klas.</Text>
         ) : (
-          <TableScrollContainer minWidth={640}>
-            <Table striped highlightOnHover>
-              <TableThead>
-                <TableTr>
-                  <TableTh>Naam</TableTh>
-                  <TableTh>Geboortedatum</TableTh>
-                  <TableTh>Geslacht</TableTh>
-                  {!staff.isTeacher && <TableTh />}
-                </TableTr>
-              </TableThead>
-              <TableTbody>
-                {schoolClass.students.map((student) => (
-                  <TableTr key={student.studentId}>
-                    <TableTd>
-                      <Anchor
-                        component="a"
-                        href={`/dashboard/students/${student.studentId}?from=${encodeURIComponent(
-                          `/dashboard/classes/${schoolClass.id}`,
-                        )}`}
-                      >
-                        {student.firstName} {student.lastName}
-                      </Anchor>
-                    </TableTd>
-                    <TableTd>{formatDate(student.dateOfBirth)}</TableTd>
-                    <TableTd>
-                      {student.sex
-                        ? SEX_LABELS[student.sex] ?? student.sex
-                        : "—"}
-                    </TableTd>
-                    {!staff.isTeacher && (
-                      <TableTd>
-                        <Group justify="flex-end">
-                          <RemoveStudentButton
-                            classId={schoolClass.id}
-                            studentId={student.studentId}
-                            studentName={`${student.firstName} ${student.lastName}`}
-                          />
-                        </Group>
-                      </TableTd>
-                    )}
-                  </TableTr>
-                ))}
-              </TableTbody>
-            </Table>
-          </TableScrollContainer>
+          <RosterTable
+            classId={schoolClass.id}
+            students={schoolClass.students}
+            moveTargets={moveTargets}
+            canManage={!staff.isTeacher}
+          />
         )}
       </Card>
     </Stack>

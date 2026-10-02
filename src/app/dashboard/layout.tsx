@@ -1,10 +1,10 @@
-import { requireSession } from "@/lib/dal";
+import { requireActiveSession } from "@/lib/dal";
 import { DashboardShell } from "./dashboard-shell";
 
 export default async function DashboardLayout({
   children,
 }: LayoutProps<"/dashboard">) {
-  const session = await requireSession();
+  const session = await requireActiveSession();
 
   return (
     <DashboardShell

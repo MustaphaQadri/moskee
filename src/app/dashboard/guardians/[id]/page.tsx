@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import {
   Anchor,
-  Badge,
+  Avatar,
   Button,
   Card,
   Group,
@@ -111,7 +111,6 @@ export default async function GuardianDetailPage({
                   <TableTh>Geboortedatum</TableTh>
                   <TableTh>Geslacht</TableTh>
                   <TableTh>Relatie</TableTh>
-                  <TableTh>Primair</TableTh>
                   <TableTh />
                 </TableTr>
               </TableThead>
@@ -119,31 +118,28 @@ export default async function GuardianDetailPage({
                 {guardian.students.map((student) => (
                   <TableTr key={student.id}>
                     <TableTd>
-                      <Anchor
-                        component="a"
-                        href={`/dashboard/students/${student.id}?from=${encodeURIComponent(
-                          `/dashboard/guardians/${guardian.id}`,
-                        )}`}
-                      >
-                        {student.firstName} {student.lastName}
-                      </Anchor>
+                      <Group gap="xs" wrap="nowrap">
+                        <Avatar
+                          src={student.image}
+                          alt={`${student.firstName} ${student.lastName}`}
+                          size={32}
+                          radius="sm"
+                        />
+                        <Anchor
+                          component="a"
+                          href={`/dashboard/students/${student.id}?from=${encodeURIComponent(
+                            `/dashboard/guardians/${guardian.id}`,
+                          )}`}
+                        >
+                          {student.firstName} {student.lastName}
+                        </Anchor>
+                      </Group>
                     </TableTd>
                     <TableTd>{formatDate(student.dateOfBirth)}</TableTd>
                     <TableTd>
                       {student.sex ? SEX_LABELS[student.sex] ?? student.sex : "—"}
                     </TableTd>
                     <TableTd>{student.relation ?? "—"}</TableTd>
-                    <TableTd>
-                      {student.isPrimary ? (
-                        <Badge color="green" variant="light">
-                          Ja
-                        </Badge>
-                      ) : (
-                        <Badge color="gray" variant="light">
-                          Nee
-                        </Badge>
-                      )}
-                    </TableTd>
                     <TableTd>
                       <EditStudentButton
                         guardianId={guardian.id}

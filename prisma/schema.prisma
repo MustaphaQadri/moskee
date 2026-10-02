@@ -30,6 +30,8 @@ model User {
   image         String?
   // Application role: "manager" | "teacher". Managed out-of-band (not via signup).
   role          String   @default("teacher")
+  // Forces a password change on next sign-in (set when a manager resets it).
+  mustChangePassword Boolean @default(false)
   // Contact details (teachers are users with role = "teacher").
   phone         String?
   createdAt     DateTime @default(now())
@@ -97,7 +99,6 @@ model Verification {
 enum Sex {
   MALE
   FEMALE
-  OTHER
 }
 
 // A student. Guardians are linked many-to-many through StudentGuardian;
@@ -108,6 +109,7 @@ model Student {
   lastName    String
   sex         Sex?
   dateOfBirth DateTime
+  image       String? // URL path under /uploads/students
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -145,15 +147,14 @@ model Guardian {
   @@map("guardians")
 }
 
-// Join table: student <-> guardian. `relation` and `isPrimary` describe the
-// link itself (a guardian may be "mother" to one child and "aunt" to another).
+// Join table: student <-> guardian. `relation` describes the link itself
+// (a guardian may be "mother" to one child and "aunt" to another).
 model StudentGuardian {
   id         String   @id @default(cuid())
   studentId  String
   guardianId String
   // e.g. "mother", "father", "grandmother", "other"
   relation   String?
-  isPrimary  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -337,6 +338,7 @@ enum AttendanceStatus {
   PRESENT
   ABSENT
   LATE
+  VERY_LATE
   EXCUSED
 }
 
@@ -369,14 +371,14 @@ model Attendance {
 // ---------------------------------------------------------------------------
 // Academic years, terms (periods), subjects and grades.
 //
-// - `AcademicYear` owns `Term`s (3 per year). The model is called `Term`
-//   internally to avoid colliding with `ClassSession.period` (time-of-day);
-//   the UI labels it "Period".
+// - `Term` (UI: "Periode") is a **global** definition (name, order, month
+//   range) applied to every academic year — not owned by a year. The model is
+//   called `Term` to avoid colliding with `ClassSession` (weekend timeslot).
 // - `Subject` is scoped to a `Level` (e.g. "Math" exists once per level); the
 //   level of a grade therefore comes from the student's class.
-// - A `Grade` is one student's score in one subject for one term. Scores are
-//   integers 1-10; `null` means "not graded yet". Averages/ranks are never
-//   stored — reports compute them on read.
+// - A `Grade` is one student's score in one subject for one term **in one
+//   academic year**. Scores are integers 1-10; `null` means "not graded yet".
+//   Averages/ranks are never stored — reports compute them on read.
 // ---------------------------------------------------------------------------
 
 model AcademicYear {
@@ -389,93 +391,79 @@ model AcademicYear {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  terms     Term[]
+  grades    Grade[]
   donations StudentDonation[]
 
   @@map("academic_years")
 }
 
+// A period ("Periode"/"Termijn") defined once and applied to every academic
+// year. The UI says "Periode". It is scoped by two month numbers (1-12) that do
+// not cross the calendar-year boundary; concrete dates are derived per academic
+// year (`startMonth` first day → `endMonth` last day). Grades are what tie a
+// period to a specific year (see `Grade.academicYearId`).
 model Term {
-  id             String    @id @default(cuid())
-  academicYearId String
-  name           String // e.g. "Period 1"
-  sortOrder      Int
-  // Date bounds let reports scope attendance to a term / year.
-  startDate      DateTime? @db.Date
-  endDate        DateTime? @db.Date
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id         String   @id @default(cuid())
+  name       String   @unique // e.g. "Termijn 1"
+  sortOrder  Int      @unique
+  startMonth Int // 1-12
+  endMonth   Int // 1-12, >= startMonth
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  grades       Grade[]
+  grades Grade[]
 
-  @@unique([academicYearId, name])
-  @@unique([academicYearId, sortOrder])
-  @@index([academicYearId])
   @@map("terms")
 }
 
 model Subject {
-  id        String   @id @default(cuid())
-  levelId   String
-  name      String // clean name ("Math"); the level is the relation below
-  sortOrder Int?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  levelId     String
+  name        String // clean name ("Math"); the level is the relation below
+  description String?
+  image       String? // URL path under /uploads/subjects
+  sortOrder   Int?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   level  Level   @relation(fields: [levelId], references: [id], onDelete: Restrict)
   grades Grade[]
-
-  competencies Competency[]
 
   @@unique([levelId, name])
   @@index([levelId])
   @@map("subjects")
 }
 
-// A competency ("vaardigheid") within a subject. These are the units that get
-// graded (a subject's grade sheet lists its competencies).
-model Competency {
-  id        String   @id @default(cuid())
-  subjectId String
-  name      String
-  sortOrder Int?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-
-  @@unique([subjectId, name])
-  @@index([subjectId])
-  @@map("competencies")
-}
-
 model Grade {
-  id           String   @id @default(cuid())
-  studentId    String
-  classId      String // context + authorization; one class per student per term
-  subjectId    String
-  termId       String
-  score        Int? // 1-10; null = not graded
-  remark       String?
-  recordedById String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  studentId      String
+  classId        String // context + authorization; one class per student per term
+  subjectId      String
+  termId         String
+  // Terms are global; the year is what scopes a grade to a school year.
+  academicYearId String
+  score          Int? // 1-10; null = not graded
+  remark         String?
+  recordedById   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   class   SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
-  // Restrict: grades are history — deleting a subject/term must not wipe them.
-  subject Subject     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
-  term    Term        @relation(fields: [termId], references: [id], onDelete: Restrict)
-  recordedBy User?    @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  // Restrict: grades are history — deleting a subject/term/year must not wipe them.
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  term         Term         @relation(fields: [termId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
 
-  @@unique([studentId, subjectId, termId])
+  @@unique([studentId, subjectId, termId, academicYearId])
   @@index([classId, termId])
+  @@index([classId, academicYearId])
   @@index([studentId])
   @@index([subjectId])
   @@index([termId])
+  @@index([academicYearId])
   @@index([recordedById])
   @@map("grades")
 }

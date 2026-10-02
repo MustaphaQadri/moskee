@@ -8,6 +8,10 @@ import type { AttendanceStatus } from "@/generated/prisma/enums";
 // Read side of subjects / terms / grades. Reports are computed on read — no
 // averages or ranks are stored. Server-only: use from Server Components and
 // Server Actions, never Client Components.
+//
+// Terms are global period definitions (month ranges); a grade is scoped to an
+// academic year. Concrete term dates are derived per year for attendance
+// scoping.
 
 export type SubjectDTO = {
   id: string;
@@ -20,8 +24,8 @@ export type TermDTO = {
   id: string;
   name: string;
   sortOrder: number;
-  startDate: string | null;
-  endDate: string | null;
+  startMonth: number;
+  endMonth: number;
 };
 
 export type GradeSheetCellDTO = { score: number | null; remark: string | null };
@@ -46,9 +50,10 @@ export type AttendanceSummaryDTO = {
   present: number;
   absent: number;
   late: number;
+  veryLate: number;
   excused: number;
   total: number;
-  // (present + late) / total, or null when there is no attendance to count.
+  // (present + late + very late) / total, or null when there is no attendance.
   presenceRate: number | null;
 };
 
@@ -87,19 +92,106 @@ function mean(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function termDTO(term: {
+type TermMonths = {
   id: string;
   name: string;
   sortOrder: number;
-  startDate: Date | null;
-  endDate: Date | null;
-}): TermDTO {
+  startMonth: number;
+  endMonth: number;
+};
+
+function termDTO(term: TermMonths): TermDTO {
   return {
     id: term.id,
     name: term.name,
     sortOrder: term.sortOrder,
-    startDate: toDateOnly(term.startDate),
-    endDate: toDateOnly(term.endDate),
+    startMonth: term.startMonth,
+    endMonth: term.endMonth,
+  };
+}
+
+// Terms do not cross the calendar-year boundary. Resolve which calendar year a
+// term falls in for a given academic year (which usually spans two years): a
+// term starting on/after the year's start month is in the start year, otherwise
+// in the end year. Returns null when the year has no bounds.
+export function resolveTermDates(
+  term: { startMonth: number; endMonth: number },
+  academicYear: { startDate: Date | null; endDate: Date | null },
+): { startDate: Date; endDate: Date } | null {
+  if (!academicYear.startDate || !academicYear.endDate) return null;
+
+  const startYear = academicYear.startDate.getUTCFullYear();
+  const endYear = academicYear.endDate.getUTCFullYear();
+  const yearStartMonth = academicYear.startDate.getUTCMonth() + 1;
+  const calendarYear = term.startMonth >= yearStartMonth ? startYear : endYear;
+
+  return {
+    startDate: new Date(Date.UTC(calendarYear, term.startMonth - 1, 1)),
+    endDate: new Date(Date.UTC(calendarYear, term.endMonth, 0)),
+  };
+}
+
+export type AttendancePeriodDTO = {
+  termId: string;
+  name: string;
+  sortOrder: number;
+  startDate: string; // yyyy-mm-dd
+  endDate: string; // yyyy-mm-dd
+  isCurrent: boolean; // today falls within the period
+};
+
+export type AttendancePeriodsDTO = {
+  academicYear: { id: string; name: string } | null;
+  periods: AttendancePeriodDTO[];
+};
+
+// The global periods resolved to concrete dates for the current academic year,
+// in order. Used to scope attendance per period.
+export async function listAttendancePeriods(): Promise<AttendancePeriodsDTO> {
+  const academicYear =
+    (await prisma.academicYear.findFirst({
+      where: { isCurrent: true },
+      select: { id: true, name: true, startDate: true, endDate: true },
+    })) ??
+    (await prisma.academicYear.findFirst({
+      orderBy: { name: "desc" },
+      select: { id: true, name: true, startDate: true, endDate: true },
+    }));
+
+  if (!academicYear) return { academicYear: null, periods: [] };
+
+  const terms = await prisma.term.findMany({
+    orderBy: { sortOrder: "asc" },
+    select: {
+      id: true,
+      name: true,
+      sortOrder: true,
+      startMonth: true,
+      endMonth: true,
+    },
+  });
+
+  const today = toDateOnly(new Date()) ?? "";
+  const periods: AttendancePeriodDTO[] = [];
+  for (const term of terms) {
+    const dates = resolveTermDates(term, academicYear);
+    if (!dates) continue;
+    const startDate = toDateOnly(dates.startDate);
+    const endDate = toDateOnly(dates.endDate);
+    if (!startDate || !endDate) continue;
+    periods.push({
+      termId: term.id,
+      name: term.name,
+      sortOrder: term.sortOrder,
+      startDate,
+      endDate,
+      isCurrent: today >= startDate && today <= endDate,
+    });
+  }
+
+  return {
+    academicYear: { id: academicYear.id, name: academicYear.name },
+    periods,
   };
 }
 
@@ -111,21 +203,14 @@ export async function getLevelSubjects(levelId: string): Promise<SubjectDTO[]> {
   });
 }
 
-export async function getActiveTerms(academicYearId: string): Promise<TermDTO[]> {
-  const terms = await prisma.term.findMany({
-    where: { academicYearId },
-    orderBy: { sortOrder: "asc" },
-    select: { id: true, name: true, sortOrder: true, startDate: true, endDate: true },
-  });
-  return terms.map(termDTO);
-}
-
-// Grid to enter grades: roster (rows) × level subjects (columns) for one term.
+// Grid to enter grades: roster (rows) × level subjects (columns) for one term of
+// one academic year.
 export async function getClassGradeSheet(params: {
   classId: string;
   termId: string;
+  academicYearId: string;
 }): Promise<ClassGradeSheetDTO | null> {
-  const [schoolClass, term] = await Promise.all([
+  const [schoolClass, term, academicYear] = await Promise.all([
     prisma.schoolClass.findUnique({
       where: { id: params.classId },
       select: { id: true, name: true, level: { select: { id: true, name: true } } },
@@ -136,20 +221,27 @@ export async function getClassGradeSheet(params: {
         id: true,
         name: true,
         sortOrder: true,
-        startDate: true,
-        endDate: true,
-        academicYear: { select: { id: true, name: true } },
+        startMonth: true,
+        endMonth: true,
       },
+    }),
+    prisma.academicYear.findUnique({
+      where: { id: params.academicYearId },
+      select: { id: true, name: true },
     }),
   ]);
 
-  if (!schoolClass || !term) return null;
+  if (!schoolClass || !term || !academicYear) return null;
 
   const [subjects, roster, grades] = await Promise.all([
     getLevelSubjects(schoolClass.level.id),
     getClassRoster(params.classId),
     prisma.grade.findMany({
-      where: { classId: params.classId, termId: params.termId },
+      where: {
+        classId: params.classId,
+        termId: params.termId,
+        academicYearId: params.academicYearId,
+      },
       select: { studentId: true, subjectId: true, score: true, remark: true },
     }),
   ]);
@@ -165,7 +257,7 @@ export async function getClassGradeSheet(params: {
     class: { id: schoolClass.id, name: schoolClass.name },
     level: schoolClass.level,
     term: termDTO(term),
-    academicYear: term.academicYear,
+    academicYear,
     subjects,
     students: roster.map((student) => ({
       ...student,
@@ -191,29 +283,34 @@ async function attendanceSummary(
     PRESENT: 0,
     ABSENT: 0,
     LATE: 0,
+    VERY_LATE: 0,
     EXCUSED: 0,
   };
   for (const group of groups) counts[group.status] = group._count._all;
 
-  const total = counts.PRESENT + counts.ABSENT + counts.LATE + counts.EXCUSED;
+  const total =
+    counts.PRESENT + counts.ABSENT + counts.LATE + counts.VERY_LATE + counts.EXCUSED;
+  const attended = counts.PRESENT + counts.LATE + counts.VERY_LATE;
   return {
     present: counts.PRESENT,
     absent: counts.ABSENT,
     late: counts.LATE,
+    veryLate: counts.VERY_LATE,
     excused: counts.EXCUSED,
     total,
-    presenceRate: total > 0 ? (counts.PRESENT + counts.LATE) / total : null,
+    presenceRate: total > 0 ? attended / total : null,
   };
 }
 
 // Resolves the class a report belongs to: prefer the class recorded on the
-// student's grades for the term, otherwise their current active enrollment.
+// student's grades for the term/year, otherwise their current active enrollment.
 async function resolveReportClass(
   studentId: string,
   termId: string,
+  academicYearId: string,
 ): Promise<{ id: string; name: string; level: { id: string; name: string } } | null> {
   const graded = await prisma.grade.findFirst({
-    where: { studentId, termId },
+    where: { studentId, termId, academicYearId },
     select: { class: { select: { id: true, name: true, level: { select: { id: true, name: true } } } } },
   });
   if (graded) return graded.class;
@@ -229,8 +326,9 @@ async function resolveReportClass(
 export async function getStudentPeriodReport(params: {
   studentId: string;
   termId: string;
+  academicYearId: string;
 }): Promise<PeriodReportDTO | null> {
-  const [student, term] = await Promise.all([
+  const [student, term, academicYear] = await Promise.all([
     prisma.student.findUnique({
       where: { id: params.studentId },
       select: { id: true, firstName: true, lastName: true },
@@ -241,25 +339,41 @@ export async function getStudentPeriodReport(params: {
         id: true,
         name: true,
         sortOrder: true,
-        startDate: true,
-        endDate: true,
-        academicYear: { select: { id: true, name: true } },
+        startMonth: true,
+        endMonth: true,
       },
     }),
+    prisma.academicYear.findUnique({
+      where: { id: params.academicYearId },
+      select: { id: true, name: true, startDate: true, endDate: true },
+    }),
   ]);
-  if (!student || !term) return null;
+  if (!student || !term || !academicYear) return null;
 
-  const schoolClass = await resolveReportClass(student.id, term.id);
+  const schoolClass = await resolveReportClass(
+    student.id,
+    term.id,
+    academicYear.id,
+  );
   if (!schoolClass) return null;
 
   const [subjects, grades, classGrades, classSize] = await Promise.all([
     getLevelSubjects(schoolClass.level.id),
     prisma.grade.findMany({
-      where: { studentId: student.id, termId: term.id },
+      where: {
+        studentId: student.id,
+        termId: term.id,
+        academicYearId: academicYear.id,
+      },
       select: { subjectId: true, score: true, remark: true },
     }),
     prisma.grade.findMany({
-      where: { classId: schoolClass.id, termId: term.id, score: { not: null } },
+      where: {
+        classId: schoolClass.id,
+        termId: term.id,
+        academicYearId: academicYear.id,
+        score: { not: null },
+      },
       select: { studentId: true, score: true },
     }),
     prisma.enrollment.count({ where: { classId: schoolClass.id, status: "active" } }),
@@ -301,18 +415,24 @@ export async function getStudentPeriodReport(params: {
     rank = better + 1;
   }
 
+  const dates = resolveTermDates(term, academicYear);
+
   return {
     student,
     class: { id: schoolClass.id, name: schoolClass.name },
     level: schoolClass.level,
     term: termDTO(term),
-    academicYear: term.academicYear,
+    academicYear: { id: academicYear.id, name: academicYear.name },
     subjects: subjectRows,
     average,
     gradedCount: scores.length,
     rank,
     classSize,
-    attendance: await attendanceSummary(student.id, term.startDate, term.endDate),
+    attendance: await attendanceSummary(
+      student.id,
+      dates?.startDate ?? null,
+      dates?.endDate ?? null,
+    ),
   };
 }
 
@@ -327,18 +447,30 @@ export async function getStudentYearlyReport(params: {
     }),
     prisma.academicYear.findUnique({
       where: { id: params.academicYearId },
-      select: { id: true, name: true, terms: { orderBy: { sortOrder: "asc" }, select: { id: true, name: true, sortOrder: true, startDate: true, endDate: true } } },
+      select: { id: true, name: true, startDate: true, endDate: true },
     }),
   ]);
-  if (!student || !academicYear || academicYear.terms.length === 0) return null;
+  if (!student || !academicYear) return null;
 
-  const terms = academicYear.terms;
+  // Terms are global; every year uses the same ordered list.
+  const terms = await prisma.term.findMany({
+    orderBy: { sortOrder: "asc" },
+    select: {
+      id: true,
+      name: true,
+      sortOrder: true,
+      startMonth: true,
+      endMonth: true,
+    },
+  });
+  if (terms.length === 0) return null;
+
   const termIds = terms.map((term) => term.id);
 
-  // Same class resolution as the period report, across any of the year's terms.
+  // Same class resolution as the period report, across any of the terms.
   let schoolClass = null as Awaited<ReturnType<typeof resolveReportClass>>;
   for (const term of terms) {
-    schoolClass = await resolveReportClass(student.id, term.id);
+    schoolClass = await resolveReportClass(student.id, term.id, academicYear.id);
     if (schoolClass) break;
   }
   if (!schoolClass) return null;
@@ -346,7 +478,11 @@ export async function getStudentYearlyReport(params: {
   const [subjects, grades] = await Promise.all([
     getLevelSubjects(schoolClass.level.id),
     prisma.grade.findMany({
-      where: { studentId: student.id, termId: { in: termIds } },
+      where: {
+        studentId: student.id,
+        academicYearId: academicYear.id,
+        termId: { in: termIds },
+      },
       select: { subjectId: true, termId: true, score: true, remark: true },
     }),
   ]);
@@ -375,11 +511,16 @@ export async function getStudentYearlyReport(params: {
     .filter((value): value is number => value !== null);
 
   // Overall attendance spans the earliest start to the latest end of the terms
-  // that have bounds.
-  const starts = terms.map((term) => term.startDate).filter((date): date is Date => date !== null);
-  const ends = terms.map((term) => term.endDate).filter((date): date is Date => date !== null);
-  const from = starts.length > 0 ? new Date(Math.min(...starts.map((d) => d.getTime()))) : null;
-  const to = ends.length > 0 ? new Date(Math.max(...ends.map((d) => d.getTime()))) : null;
+  // whose dates can be resolved.
+  const resolvedDates = terms
+    .map((term) => resolveTermDates(term, academicYear))
+    .filter((dates): dates is { startDate: Date; endDate: Date } => dates !== null);
+  const from = resolvedDates.length > 0
+    ? new Date(Math.min(...resolvedDates.map((dates) => dates.startDate.getTime())))
+    : null;
+  const to = resolvedDates.length > 0
+    ? new Date(Math.max(...resolvedDates.map((dates) => dates.endDate.getTime())))
+    : null;
 
   return {
     student,

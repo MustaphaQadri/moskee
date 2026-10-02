@@ -7,7 +7,6 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Divider,
   Group,
   Select,
@@ -23,6 +22,7 @@ import { notifications } from "@mantine/notifications";
 
 import { createGuardianWithStudents } from "@/app/actions/guardians";
 import { RELATION_OPTIONS, SEX_OPTIONS } from "./options";
+import { StudentImageInput } from "./student-image-input";
 
 type StudentValues = {
   firstName: string;
@@ -30,7 +30,7 @@ type StudentValues = {
   sex: string | null;
   dateOfBirth: string;
   relation: string;
-  isPrimary: boolean;
+  image: string | null;
 };
 
 function emptyStudent(): StudentValues {
@@ -40,7 +40,7 @@ function emptyStudent(): StudentValues {
     sex: null,
     dateOfBirth: "",
     relation: "",
-    isPrimary: false,
+    image: null,
   };
 }
 
@@ -215,12 +215,11 @@ export function SubscriptionForm() {
                         {...form.getInputProps(`students.${index}.relation`)}
                       />
                     </SimpleGrid>
-                    <Checkbox
-                      label="Primaire contactpersoon voor deze leerling"
-                      {...form.getInputProps(
-                        `students.${index}.isPrimary`,
-                        { type: "checkbox" },
-                      )}
+                    <StudentImageInput
+                      value={form.values.students[index].image}
+                      onChange={(url) =>
+                        form.setFieldValue(`students.${index}.image`, url)
+                      }
                     />
                   </Stack>
                 </Card>
