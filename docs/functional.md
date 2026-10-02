@@ -63,6 +63,8 @@ Moskee manages a small weekend school:
 - Students and guardians are linked many-to-many; each link records the
   **relation** ("mother", "father", "aunt", …). A guardian can be related
   differently to different children.
+- Managers can edit a student's own data (name, sex, date of birth, photo)
+  directly from the student detail page, using the same fields as enrollment.
 - Both students and guardians can carry free-text comments from staff.
 - The **Inschrijvingen** overview has two tabs: **Ouders/verzorgers** (guardian
   list) and **Leerlingen** (student list, showing each student's class and

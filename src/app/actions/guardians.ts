@@ -45,15 +45,19 @@ const guardianFields = {
   educationNumber: optionalText(50),
 };
 
-const studentFields = {
+const studentCoreFields = {
   firstName: z.string().trim().min(1, "Voornaam is verplicht").max(100),
   lastName: z.string().trim().min(1, "Achternaam is verplicht").max(100),
   sex: z.enum(["MALE", "FEMALE"]).nullish(),
   dateOfBirth: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Geboortedatum is verplicht (jjjj-mm-dd)"),
-  relation: optionalText(50),
   image: optionalText(500),
+};
+
+const studentFields = {
+  ...studentCoreFields,
+  relation: optionalText(50),
 };
 
 const studentSchema = z.object(studentFields);
@@ -76,7 +80,19 @@ const updateStudentSchema = z.object({
   ...studentFields,
 });
 
-function studentData(student: z.infer<typeof studentSchema>) {
+// Edit a student's own data from their detail page (no guardian link).
+const updateStudentProfileSchema = z.object({
+  id: z.string().min(1),
+  ...studentCoreFields,
+});
+
+function studentData(student: {
+  firstName: string;
+  lastName: string;
+  sex?: "MALE" | "FEMALE" | null;
+  dateOfBirth: string;
+  image: string | null;
+}) {
   return {
     firstName: student.firstName,
     lastName: student.lastName,
@@ -235,6 +251,33 @@ export async function updateStudent(input: unknown): Promise<ActionResult> {
 
     revalidatePath("/dashboard/guardians");
     revalidatePath(`/dashboard/guardians/${parsed.guardianId}`);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toError(error) };
+  }
+}
+
+// Edit a student's own data from their detail page (managers only). The
+// guardian links and their relations are untouched.
+export async function updateStudentProfile(input: unknown): Promise<ActionResult> {
+  await requireManager();
+  try {
+    const parsed = updateStudentProfileSchema.parse(input);
+
+    const existing = await prisma.student.findUnique({
+      where: { id: parsed.id },
+      select: { id: true },
+    });
+    if (!existing) throw new ActionError("Leerling niet gevonden");
+
+    await prisma.student.update({
+      where: { id: parsed.id },
+      data: studentData(parsed),
+    });
+
+    revalidatePath(`/dashboard/students/${parsed.id}`);
+    revalidatePath("/dashboard/guardians");
+    revalidatePath("/dashboard/classes");
     return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toError(error) };

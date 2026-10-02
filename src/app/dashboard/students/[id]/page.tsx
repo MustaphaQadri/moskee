@@ -34,6 +34,7 @@ import {
 import { PieChart } from "@/components/pie-chart";
 import { SEX_LABELS } from "@/app/dashboard/guardians/options";
 import { CommentsSection } from "./comments";
+import { EditStudentProfileButton } from "./edit-student-profile";
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -106,26 +107,43 @@ export default async function StudentDetailPage({
         </Group>
       </Anchor>
 
-      <Group gap="md" align="flex-start">
-        <Avatar
-          src={student.image}
-          alt={`${student.firstName} ${student.lastName}`}
-          size={72}
-          radius="md"
-        />
-        <div>
-          <Group gap="sm">
-            <Title order={2}>
-              {student.firstName} {student.lastName}
-            </Title>
-            {student.sex && (
-              <Badge variant="light">
-                {SEX_LABELS[student.sex] ?? student.sex}
-              </Badge>
-            )}
-          </Group>
-          <Text c="dimmed">Geboortedatum: {formatDate(student.dateOfBirth)}</Text>
-        </div>
+      <Group gap="md" align="flex-start" justify="space-between" wrap="wrap">
+        <Group gap="md" align="flex-start">
+          <Avatar
+            src={student.image}
+            alt={`${student.firstName} ${student.lastName}`}
+            size={72}
+            radius="md"
+          />
+          <div>
+            <Group gap="sm">
+              <Title order={2}>
+                {student.firstName} {student.lastName}
+              </Title>
+              {student.sex && (
+                <Badge variant="light">
+                  {SEX_LABELS[student.sex] ?? student.sex}
+                </Badge>
+              )}
+            </Group>
+            <Text c="dimmed">
+              Geboortedatum: {formatDate(student.dateOfBirth)}
+            </Text>
+          </div>
+        </Group>
+
+        {!staff.isTeacher && (
+          <EditStudentProfileButton
+            student={{
+              id: student.id,
+              firstName: student.firstName,
+              lastName: student.lastName,
+              sex: student.sex,
+              dateOfBirth: student.dateOfBirth,
+              image: student.image,
+            }}
+          />
+        )}
       </Group>
 
       <Paper withBorder p="md">
