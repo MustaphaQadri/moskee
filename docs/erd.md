@@ -217,15 +217,47 @@ erDiagram
         timestamp updatedAt
     }
 
+    exams {
+        text id PK
+        text classId FK
+        text subjectId FK
+        text termId FK
+        text academicYearId FK
+        text title "e.g. Hoofdstuk 1"
+        timestamp date "DATE (UTC midnight)"
+        integer coefficient ">= 1, default 1"
+        text recordedById FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     grades {
         text id PK
-        text studentId FK,UK "unique per subject+term+year"
-        text classId FK
-        text subjectId FK,UK "unique per student+term+year"
-        text termId FK,UK "unique per student+subject+year"
-        text academicYearId FK,UK "unique per student+subject+term"
+        text studentId FK,UK "unique per exam"
+        text examId FK,UK "unique per student"
         integer score "1..10 or null"
         text remark
+        text recordedById FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    period_report_observations {
+        text id PK
+        text studentId FK,UK "unique per term+year"
+        text termId FK,UK "unique per student+year"
+        text academicYearId FK,UK "unique per student+term"
+        text body
+        text recordedById FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    year_report_observations {
+        text id PK
+        text studentId FK,UK "unique per year"
+        text academicYearId FK,UK "unique per student"
+        text body
         text recordedById FK
         timestamp createdAt
         timestamp updatedAt
@@ -281,12 +313,24 @@ erDiagram
     User |o--o{ attendance : "records"
 
     levels ||--o{ subjects : "offers"
-    terms ||--o{ grades : "assesses"
-    subjects ||--o{ grades : "graded in"
+    terms ||--o{ exams : "assesses"
+    subjects ||--o{ exams : "examined in"
+    classes ||--o{ exams : "holds"
+    academic_years ||--o{ exams : "scopes"
+    User |o--o{ exams : "records"
+
+    exams ||--o{ grades : "scores"
     students ||--o{ grades : "earns"
-    classes ||--o{ grades : "records"
-    academic_years ||--o{ grades : "scopes"
     User |o--o{ grades : "records"
+
+    students ||--o{ period_report_observations : "is observed"
+    terms ||--o{ period_report_observations : "annotates"
+    academic_years ||--o{ period_report_observations : "scopes"
+    User |o--o{ period_report_observations : "writes"
+
+    students ||--o{ year_report_observations : "is observed"
+    academic_years ||--o{ year_report_observations : "scopes"
+    User |o--o{ year_report_observations : "writes"
 
     students ||--o{ student_donations : "donates"
     academic_years ||--o{ student_donations : "receives"
@@ -305,7 +349,9 @@ erDiagram
   `attendance (studentId, classId, sessionId, date)`,
   `terms (name)` and `(sortOrder)` (global periods),
   `subjects (levelId, name)`,
-  `grades (studentId, subjectId, termId, academicYearId)`,
+  `grades (studentId, examId)`,
+  `period_report_observations (studentId, termId, academicYearId)`,
+  `year_report_observations (studentId, academicYearId)`,
   `student_donations (studentId, academicYearId)`.
 - `Sex` is a PostgreSQL enum: `MALE | FEMALE`; `AttendanceStatus` is
   `PRESENT | LATE | VERY_LATE | ABSENT | EXCUSED`; `DonationCategory` is

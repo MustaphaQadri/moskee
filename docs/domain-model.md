@@ -38,15 +38,19 @@ Two groups of tables:
 - **School domain**: `Student`, `Guardian`, `StudentGuardian`, `Room`, `Level`,
   `ClassSession`, `SchoolClass`, `SchoolClassSession`, `Enrollment`, the three
   `*Comment` tables, plus **`Attendance`**, **`AcademicYear`**, **`Term`**,
-  **`Subject`**, **`Grade`**, **`DonationSetting`**, **`StudentDonation`**.
+  **`Subject`**, **`Exam`**, **`Grade`**, **`PeriodReportObservation`**,
+  **`YearReportObservation`**, **`DonationSetting`**, **`StudentDonation`**.
 
 Key relations:
 
 ```
-Level 1─* Subject 1─* Grade *─1 Student
-Level 1─* SchoolClass 1─* Grade
-Grade *─1 Term                       // global period definition
-Grade *─1 AcademicYear               // scopes the grade to a school year
+Level 1─* Subject 1─* Exam 1─* Grade *─1 Student
+Level 1─* SchoolClass 1─* Exam 1─* Grade
+Exam *─1 Term                        // global period definition
+Exam *─1 AcademicYear                // scopes the exam to a school year
+Student 1─* PeriodReportObservation *─1 Term
+Student 1─* YearReportObservation *─1 AcademicYear
+User 1─* Exam ("recordedBy")         // author of the exam
 User 1─* Grade ("recordedBy")        // author of the score
 SchoolClass 1─* Attendance           // presence, keyed by session + date
 Student 1─* Attendance
@@ -121,26 +125,52 @@ row. There is no global subject list and no `Subject ↔ Level` join — the lev
 the relation. The grade's level therefore comes from the student's class.
 
 - Unique `(levelId, name)`; names stay clean (no `math_l1` suffixes).
-- `sortOrder` orders columns on the grade sheet; `isActive` hides retired
-  subjects from new sheets.
+- `sortOrder` orders the exams list; `isActive` hides retired subjects from new
+  exams.
 - Optional `description` and `image` (a URL under `/uploads/subjects`, uploaded
   by a manager via `POST /api/uploads/subject-image`).
 - Cross-level reporting (e.g. "average in Math across levels") is not supported
   by design; add a `SubjectFamily` later only if it becomes necessary.
 
+### Exam (`exams`)
+
+One test for one **class + subject + period + academic year**. A teacher can add
+several exams per subject per period.
+
+- `date @db.Date` — normalized to UTC midnight via `parseDateOnly()`.
+- `title String` — free label chosen by the teacher (e.g. "Hoofdstuk 1"), shown
+  in the exams list, the entry sheet and the period report.
+- `coefficient Int` (≥ 1, default 1) — weight of the exam in the subject's period
+  average. An exam with coefficient 2 counts twice.
+- `subject` must belong to the class's level (`assertSubjectBelongsToClassLevel`).
+- `recordedById` — staff member who created the exam.
+
 ### Grade (`grades`)
 
-One student's score in one subject for one term **in one academic year**.
+One student's score on one exam.
 
 - `score Int?` — integer **1..10**; `null` means "not graded yet".
 - `remark String?` — optional note (e.g. "absent", "excellent").
-- Unique `(studentId, subjectId, termId, academicYearId)`. Since terms are
-  global, `academicYearId` is what scopes the grade to a school year. `classId`
-  is stored for context and authorization (one class per student per term is the
-  working assumption).
+- Unique `(studentId, examId)` — re-saving an exam sheet is an idempotent upsert.
 - `recordedById` — staff member who last saved the score.
+- A roster row is created for every **active** enrollment; a student can be left
+  blank (not graded) for an exam.
 - Averages, ranks and report totals are **never stored** — they are computed on
   read in `src/lib/grades.ts`.
+
+### Report observations (`period_report_observations`, `year_report_observations`)
+
+Free text ("Opmerking" / "ملاحظة") the teacher (or manager) leaves for a student
+on a report; shown on the on-screen report and on the printed A4 report.
+
+- **`PeriodReportObservation`** — one per student per period: unique
+  `(studentId, termId, academicYearId)`.
+- **`YearReportObservation`** — one per student per year: unique
+  `(studentId, academicYearId)`.
+- `body` up to 2000 chars; saving an empty body **deletes** the row.
+- Written by `savePeriodReportObservation` / `saveYearReportObservation`
+  (`src/app/actions/report-observations.ts`), which re-check class authorization
+  and active enrollment.
 
 ### DonationSetting (`donation_settings`)
 
@@ -173,7 +203,7 @@ One row per **student per year** — the yearly donation.
    (`assertCanManageClass`).
 2. Students being marked/graded must have an **active** `Enrollment` in the class
    (`assertActiveEnrollments`).
-3. A grade's subject must belong to the class's level
+3. An exam's subject must belong to the class's level
    (`subject.levelId === class.levelId`).
 4. Attendance session must be linked to the class (`SchoolClassSession`).
 5. At most one `AcademicYear.isCurrent = true`.
@@ -196,10 +226,14 @@ One row per **student per year** — the yearly donation.
 
 | Relation                     | On delete | Why                                            |
 | ---------------------------- | --------- | ---------------------------------------------- |
-| `Grade → Term`               | Restrict  | Grades are history; can't delete a graded term |
-| `Grade → Subject`            | Restrict  | Same                                           |
-| `Grade → Student`/`Class`    | Cascade   | Removing the parent removes its records        |
-| `Grade → AcademicYear`       | Restrict  | A year with grades cannot be deleted           |
+| `Exam → Term`                | Restrict  | Exams are history; can't delete a term with exams |
+| `Exam → Subject`             | Restrict  | Same                                           |
+| `Exam → AcademicYear`        | Restrict  | A year with exams cannot be deleted            |
+| `Exam → Class`               | Cascade   | Removing the class removes its exams           |
+| `Grade → Exam`               | Cascade   | Removing an exam removes its scores            |
+| `Grade → Student`            | Cascade   | Removing the parent removes its records        |
+| `PeriodReportObservation → Student`/`Term`/`AcademicYear` | Cascade | Annotation, not history |
+| `YearReportObservation → Student`/`AcademicYear` | Cascade | Annotation, not history |
 | `Attendance → ClassSession`  | Restrict  | Lookup deletion must not wipe history          |
 | `Attendance → Class`/`Student`| Cascade  | Mirrors grades                                 |
 | `Subject → Level`            | Restrict  | Can't drop a level that still has subjects     |
@@ -207,22 +241,36 @@ One row per **student per year** — the yearly donation.
 | `StudentDonation → AcademicYear` | Restrict | Financial history; can't delete a year with donations |
 | `StudentDonation → User`     | SetNull   | Keep the record if the recorder is removed     |
 
-Actions pre-check grade/donation counts and throw friendly errors before relying
+Actions pre-check exam/donation counts and throw friendly errors before relying
 on the DB `Restrict`.
 
 ## Reports (`src/lib/grades.ts`, read-only)
 
-- **`getClassGradeSheet({ classId, termId, academicYearId })`** — roster (active
-  enrollments) × level subjects, with existing `score`/`remark` per cell. The
-  grid for entry.
-- **`getStudentPeriodReport({ studentId, termId, academicYearId })`** — one row
-  per level subject with `score`/`remark`, `average` (mean of graded subjects),
-  `gradedCount`, `rank`/`classSize` within the class, and an attendance summary
+- **`listExams({ classId, termId, academicYearId, subjectId? })`** — exams for a
+  class/period/year (optionally one subject) with title, date, coefficient and
+  graded count.
+- **`getExamGradeSheet({ examId })`** — the exam meta plus the active roster with
+  each student's `score`/`remark` (`null` = not graded). Backs the entry sheet.
+- **`getStudentPeriodReport({ studentId, termId, academicYearId })`** — per
+  subject: its exams (`title`, `date`, `coefficient`, `score`) and a
+  coefficient-weighted `average`; plus `overallAverage` (mean of the per-subject
+  averages), `rank`/`classSize` within the class, and an attendance summary
   scoped to the term's dates for that year.
-- **`getStudentYearlyReport({ studentId, academicYearId })`** — the global terms
-  in order; per subject the term scores plus a per-subject `average`;
-  `overallAverage` (equal weight per subject); attendance spanning the year's
-  resolved term bounds.
+- **`getClassPeriodReport({ classId, termId, academicYearId })`** — the same
+  numbers for every student, as a subjects × students table (subject averages,
+  overall average, rank, attendance). Backs the class report card.
+- **`getStudentYearReport({ studentId, academicYearId })`** — for every subject
+  the three period averages and the **year average** (mean of the non-null
+  period averages), the `overallAverage`, `classSize`, and attendance across the
+  whole year (earliest period start → latest period end).
+- **`getClassYearReport({ classId, academicYearId })`** — the year averages for
+  every student as a subjects × students table (subject year averages, overall
+  average, rank, whole-year attendance). Backs the class year overview.
+
+Every student report DTO also carries `observation` (the teacher's note for that
+period/year). The printable A4 reports (`src/app/print/...`) are **bilingual**
+(NL + AR fixed labels) and include the observation in a bordered frame; a
+class-wide bulk route prints one A4 page per student.
 
 Term dates are computed by `resolveTermDates(term, academicYear)` (first day of
 `startMonth` → last day of `endMonth`, in the calendar year the term falls in for
@@ -230,15 +278,21 @@ that academic year).
 
 Averaging rules:
 
-- Means ignore `null` scores.
+- A subject's period average is the **coefficient-weighted mean** of its exams'
+  non-null scores: `Σ(score × coefficient) / Σ(coefficient)`.
+- A subject's **year average** is the unweighted mean of its non-null period
+  averages.
+- A student's overall average is the unweighted mean of their per-subject
+  averages (subjects with no graded exam are ignored).
 - `rank` is **competition ranking** (ties share a position): count of students
-  with a strictly higher class average, +1. Only computed when the student has
+  with a strictly higher overall average, +1. Only computed when the student has
   an average.
 - `presenceRate = (PRESENT + LATE + VERY_LATE) / total`.
 - Attendance in a report is `null` when the term/year has no date bounds.
 
-The student's class is resolved from their grades for the term, falling back to
-their most recent active enrollment (see `resolveReportClass`).
+The student's class is resolved from an exam they are graded on for the
+term/year, falling back to their most recent active enrollment (see
+`resolveReportClass` / `resolveReportClassForYear`).
 
 ## Donation reports (`src/lib/donations.ts`, read-only)
 
@@ -272,8 +326,8 @@ their most recent active enrollment (see `resolveReportClass`).
 
 ## Open items / next steps
 
-- **UI**: no pages/routes exist yet for attendance, grade entry, or reports.
-  When they land, add `revalidatePath` calls to the actions.
+- **UI**: attendance, grade entry (exams) and period report cards have pages
+  under `/dashboard/classes/[id]`. The donation UI is still not built.
 - **Report snapshots**: reports are computed live. Add persisted report cards
   (frozen per term) only if published reports must not change retroactively.
 - **PDF/print export** for period and yearly reports.

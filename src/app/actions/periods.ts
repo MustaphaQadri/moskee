@@ -174,7 +174,7 @@ export async function deleteTerm(input: unknown): Promise<ActionResult> {
   try {
     const { id } = z.object({ id: z.string().min(1) }).parse(input);
 
-    const grades = await prisma.grade.count({ where: { termId: id } });
+    const grades = await prisma.exam.count({ where: { termId: id } });
     if (grades > 0) {
       throw new ActionError("Kan een periode met cijfers niet verwijderen");
     }

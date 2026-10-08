@@ -1,0 +1,62 @@
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+.print-canvas {
+  background: var(--mantine-color-gray-1);
+  min-height: 100vh;
+  padding: 24px 0;
+}
+
+.print-toolbar {
+  max-width: 210mm;
+  margin: 0 auto 16px;
+  padding: 0 16px;
+}
+
+.print-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto 24px;
+  padding: 18mm;
+  background: #fff;
+  color: #111;
+  box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Bulk printing: each student's report starts on its own A4 page. */
+.print-sheet + .print-sheet {
+  break-before: page;
+  page-break-before: always;
+}
+
+.print-sheet table {
+  width: 100%;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .print-canvas {
+    background: #fff !important;
+    padding: 0 !important;
+    min-height: auto !important;
+  }
+
+  .print-toolbar {
+    display: none !important;
+  }
+
+  .print-sheet {
+    width: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+}

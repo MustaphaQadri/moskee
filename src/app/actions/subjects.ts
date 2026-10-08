@@ -133,7 +133,7 @@ export async function deleteSubject(input: unknown): Promise<ActionResult> {
   try {
     const parsed = deleteSchema.parse(input);
 
-    const grades = await prisma.grade.count({ where: { subjectId: parsed.id } });
+    const grades = await prisma.exam.count({ where: { subjectId: parsed.id } });
     if (grades > 0) {
       throw new ActionError("Kan een vak met cijfers niet verwijderen");
     }

@@ -11,7 +11,6 @@ import {
   Stack,
   Text,
   Title,
-  Tooltip,
 } from "@mantine/core";
 import {
   IconArrowLeft,
@@ -92,17 +91,14 @@ export default async function ClassDetailPage({
           >
             Aanwezigheid
           </Button>
-          <Tooltip label="Binnenkort beschikbaar">
-            <span>
-              <Button
-                variant="default"
-                disabled
-                leftSection={<IconReport size={16} />}
-              >
-                Cijfers
-              </Button>
-            </span>
-          </Tooltip>
+          <Button
+            component="a"
+            href={`/dashboard/classes/${schoolClass.id}/grades`}
+            variant="light"
+            leftSection={<IconReport size={16} />}
+          >
+            Cijfers
+          </Button>
           {!staff.isTeacher && (
             <>
               <Button

@@ -44,8 +44,11 @@ model User {
   guardianComments GuardianComment[]
   classComments   ClassComment[]
   recordedAttendance Attendance[]  @relation("AttendanceRecorder")
+  recordedExams   Exam[]           @relation("ExamRecorder")
   recordedGrades  Grade[]          @relation("GradeRecorder")
   recordedDonations StudentDonation[] @relation("DonationRecorder")
+  recordedPeriodReportObservations PeriodReportObservation[] @relation("PeriodReportObservationRecorder")
+  recordedYearReportObservations   YearReportObservation[]   @relation("YearReportObservationRecorder")
 }
 
 model Session {
@@ -119,6 +122,8 @@ model Student {
   attendance  Attendance[]
   grades      Grade[]
   donations   StudentDonation[]
+  periodReportObservations PeriodReportObservation[]
+  yearReportObservations   YearReportObservation[]
 
   @@index([lastName, firstName])
   @@map("students")
@@ -231,7 +236,7 @@ model SchoolClass {
   enrollments Enrollment[]
   comments    ClassComment[]
   attendance  Attendance[]
-  grades      Grade[]
+  exams       Exam[]
 
   @@index([teacherId])
   @@index([levelId])
@@ -369,16 +374,20 @@ model Attendance {
 }
 
 // ---------------------------------------------------------------------------
-// Academic years, terms (periods), subjects and grades.
+// Academic years, terms (periods), subjects, exams and grades.
 //
 // - `Term` (UI: "Periode") is a **global** definition (name, order, month
 //   range) applied to every academic year — not owned by a year. The model is
 //   called `Term` to avoid colliding with `ClassSession` (weekend timeslot).
 // - `Subject` is scoped to a `Level` (e.g. "Math" exists once per level); the
-//   level of a grade therefore comes from the student's class.
-// - A `Grade` is one student's score in one subject for one term **in one
-//   academic year**. Scores are integers 1-10; `null` means "not graded yet".
-//   Averages/ranks are never stored — reports compute them on read.
+//   level of an exam therefore comes from the class.
+// - An `Exam` is one test for one class + subject + period + academic year. A
+//   teacher can add several exams per subject per period, each with a free
+//   `title` (e.g. "Hoofdstuk 1"). `coefficient` weights the exam when averaging
+//   a subject over the period.
+// - A `Grade` is one student's score on one exam (integers 1-10; `null` means
+//   "not graded yet"). Averages/ranks are never stored — reports compute them
+//   on read.
 // ---------------------------------------------------------------------------
 
 model AcademicYear {
@@ -391,8 +400,10 @@ model AcademicYear {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  grades    Grade[]
+  exams     Exam[]
   donations StudentDonation[]
+  periodReportObservations PeriodReportObservation[]
+  yearReportObservations   YearReportObservation[]
 
   @@map("academic_years")
 }
@@ -400,8 +411,8 @@ model AcademicYear {
 // A period ("Periode"/"Termijn") defined once and applied to every academic
 // year. The UI says "Periode". It is scoped by two month numbers (1-12) that do
 // not cross the calendar-year boundary; concrete dates are derived per academic
-// year (`startMonth` first day → `endMonth` last day). Grades are what tie a
-// period to a specific year (see `Grade.academicYearId`).
+// year (`startMonth` first day → `endMonth` last day). Exams are what tie a
+// period to a specific year (see `Exam.academicYearId`).
 model Term {
   id         String   @id @default(cuid())
   name       String   @unique // e.g. "Termijn 1"
@@ -411,7 +422,8 @@ model Term {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  grades Grade[]
+  exams Exam[]
+  periodReportObservations PeriodReportObservation[]
 
   @@map("terms")
 }
@@ -427,45 +439,116 @@ model Subject {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  level  Level   @relation(fields: [levelId], references: [id], onDelete: Restrict)
-  grades Grade[]
+  level Level  @relation(fields: [levelId], references: [id], onDelete: Restrict)
+  exams Exam[]
 
   @@unique([levelId, name])
   @@index([levelId])
   @@map("subjects")
 }
 
-model Grade {
+model Exam {
   id             String   @id @default(cuid())
-  studentId      String
-  classId        String // context + authorization; one class per student per term
+  classId        String
   subjectId      String
   termId         String
-  // Terms are global; the year is what scopes a grade to a school year.
+  // Terms are global; the year is what scopes an exam to a school year.
   academicYearId String
-  score          Int? // 1-10; null = not graded
-  remark         String?
+  // Free label chosen by the teacher, e.g. "Hoofdstuk 1".
+  title          String
+  date           DateTime @db.Date
+  // Weight of this exam in the subject's period average (>= 1).
+  coefficient    Int      @default(1)
   recordedById   String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  class   SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
-  // Restrict: grades are history — deleting a subject/term/year must not wipe them.
+  class SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  // Restrict: exams/grades are history — deleting a subject/term/year must not
+  // wipe them.
   subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   term         Term         @relation(fields: [termId], references: [id], onDelete: Restrict)
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
-  recordedBy   User?        @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedBy   User?        @relation("ExamRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  grades       Grade[]
 
-  @@unique([studentId, subjectId, termId, academicYearId])
-  @@index([classId, termId])
+  @@index([classId, termId, subjectId])
   @@index([classId, academicYearId])
-  @@index([studentId])
   @@index([subjectId])
   @@index([termId])
   @@index([academicYearId])
   @@index([recordedById])
+  @@map("exams")
+}
+
+model Grade {
+  id           String   @id @default(cuid())
+  studentId    String
+  examId       String
+  score        Int? // 1-10; null = not graded
+  remark       String?
+  recordedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  exam       Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  recordedBy User?   @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, examId])
+  @@index([examId])
+  @@index([studentId])
+  @@index([recordedById])
   @@map("grades")
+}
+
+// ---------------------------------------------------------------------------
+// Report observations — a free text the teacher leaves for a student on a report.
+// - `PeriodReportObservation` is one observation per student per period (Term)
+//   in a year.
+// - `YearReportObservation` is one observation per student per year report.
+// Observations show on the on-screen report and on the printed A4 report.
+// ---------------------------------------------------------------------------
+
+model PeriodReportObservation {
+  id             String   @id @default(cuid())
+  studentId      String
+  termId         String
+  academicYearId String
+  body           String
+  recordedById   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  term         Term         @relation(fields: [termId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("PeriodReportObservationRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, termId, academicYearId])
+  @@index([termId])
+  @@index([academicYearId])
+  @@index([recordedById])
+  @@map("period_report_observations")
+}
+
+model YearReportObservation {
+  id             String   @id @default(cuid())
+  studentId      String
+  academicYearId String
+  body           String
+  recordedById   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("YearReportObservationRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId])
+  @@index([recordedById])
+  @@map("year_report_observations")
 }
 
 // ---------------------------------------------------------------------------

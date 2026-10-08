@@ -8,10 +8,9 @@ What Moskee does, in product terms. This is the companion to
 > (guardians/students); staff management; a Beheer screen for levels, rooms,
 > subjects, timeslots, academic years and periods;
 > and classes (grid, detail, enroll/move students, per-student comments).
-> **Attendance** has a UI (per-meeting sheet and student summaries); grades still
-> only have a data layer and actions (**no UI yet**, its button on the class
-> detail is disabled). Reports and donations UI are also not built. This document
-> describes the intended behaviour those pages will expose.
+> **Attendance** has a UI (per-meeting sheet and student summaries); **grades**
+> have exams, a per-exam entry sheet, and period report cards under the class's
+> **Cijfers** button. The donations UI is still not built.
 
 ## Purpose
 
@@ -20,7 +19,7 @@ Moskee manages a small weekend school:
 - classes, levels, rooms and the weekend session slots they run in;
 - students and their guardians (parents/carers);
 - attendance per class meeting;
-- subjects and grades per term, with period and yearly reports;
+- exams and grades per period, with period report cards;
 - yearly donations per student, and who has paid.
 
 ## Roles & access
@@ -45,11 +44,12 @@ Moskee manages a small weekend school:
 | **Class**           | A group of students taught at a level, optionally in a room by a teacher. |
 | **Session slot**    | A recurring weekend timeslot: a day (from a fixed Dutch dropdown) plus a start and end time. |
 | **Meeting**         | A dated occurrence of a class in a session slot — `(class, slot, date)`. |
-| **Academic year**   | e.g. "2026-2027"; scopes the grades and donations. One is current.      |
+| **Academic year**   | e.g. "2026-2027"; scopes the exams and donations. One is current.      |
 | **Term / Period**   | A recurring period defined by months (e.g. Sept–Dec), shared by every year. |
 | **Subject**         | A subject offered at a level ("Math"); the same name exists once per level. |
 | **Enrollment**      | The link between a student and a class, with start/end dates and status. |
-| **Grade**           | A student's score in one subject for one term (1–10, or blank).         |
+| **Exam**            | One test for a class + subject + period + year; a teacher can add several per subject per period. |
+| **Grade**           | A student's score on one exam (1–10, or blank).                          |
 | **Donation**        | A yearly amount a family is expected to give for a student.             |
 
 ## Features
@@ -127,40 +127,86 @@ Moskee manages a small weekend school:
   subject. A class studies the subjects of its level.
 - A subject has an optional **description** and an optional **image** (uploaded
   by a manager).
-- Subjects have an order (column order on grade sheets) and an **active** flag to
-  retire them without deleting history.
-- A subject that already has grades cannot be deleted.
+- Subjects have an order (exams are grouped/listed by subject) and an **active**
+  flag to retire them without deleting history.
+- A subject that already has exams cannot be deleted.
 
-### 7. Grades
+### 7. Exams & grades
 
-- A grade is one student's score in one subject for one term **in one school
-  year** (a term is global, so the year is what separates years).
-- Scores are whole numbers **1–10**; a blank means **not graded yet**. An
-  optional remark can be attached.
-- Grades are entered on a **class grade sheet**: the class roster (rows) against
-  the level's subjects (columns), for a chosen term and school year.
-- A grade's subject must belong to the class's level, and the student must be
+- An **exam** is one test for a class, a **subject**, a **period** and a
+  **school year**. A teacher can add **several exams per subject per period**
+  (e.g. "Toets 1" and "Toets 2" in the same period).
+- An exam has a **name** the teacher fills in (e.g. "Hoofdstuk 1"), a **date** and
+  a **coefficient** (weight ≥ 1, default 1) used when averaging.
+- From a class, **Cijfers** opens the exams for a chosen **schooljaar**, **periode**
+  and (optionally) **vak**. There the teacher can add a toets and open it.
+- Grades are entered **like attendance**: the active roster is shown as rows and
+  each student's grade is picked from a **segmented control** of `—` and 1–10,
+  with an optional remark; one **Opslaan** saves the whole sheet.
+- The exam's subject must belong to the class's level, and the student must be
   actively enrolled. Teachers edit only their own classes.
 - Averages, ranks and totals are **computed when a report is viewed**, never
   stored, so they can't drift from the underlying scores.
 
 ### 8. Reports
 
-**Period report (per student, per term)**
+**Period report card (per class, per period)**
 
-- One row per subject of the student's level: score and remark.
-- **Average** = mean of the subjects that have a score (blanks ignored).
-- **Rank** within the class for that term, with ties sharing a position.
-- **Attendance** for the term (counts by status and presence rate), when the
-  term has date bounds.
+- A table of the class: each student (rows) against the level's subjects
+  (columns), showing the **subject average** for the period, the student's
+  **overall average**, their **rank** in the class, and their **attendance**.
+- Opening a student shows their **report card**: for each subject (as a header)
+  the exams are listed underneath with the **name**, **date** and the student's
+  **grade**, followed by the subject's **average**; plus overall average, rank,
+  and an attendance **pie chart** with the counts for the period.
 
-**Yearly report (per student, per academic year)**
+**Printable report (per student, per period)**
 
-- The year's terms in order.
-- Per subject: the term scores and a **per-subject average**.
-- **Overall average** = mean of the per-subject averages (equal weight per
-  subject).
-- Attendance across the year's term date bounds.
+- A print-friendly **A4** page (browser print / "save as PDF") intended to hand
+  to the student, reachable from the report card.
+- It shows **only the subject averages** (the per-exam detail stays on the period
+  report), the overall average, and the attendance **pie chart**. No rank, no
+  signature block.
+
+**Year report (per class, end of the school year)**
+
+- A class overview table of the **subject year averages**, the overall average,
+  rank and whole-year attendance per student.
+- Opening a student shows their year card: for each subject the **three period
+  averages** (P1 · P2 · P3) and the **year average**, the overall average, and an
+  attendance pie chart for the whole year.
+- A printable **A4 year report** (per student) shows the per-subject period and
+  year averages, the overall average and the attendance pie chart only (no
+  exams, no rank, no signatures).
+
+Averaging rules:
+
+- A subject's period average = **coefficient-weighted mean** of that subject's
+  exam scores (`Σ(score × coefficient) / Σ(coefficient)`); blanks are ignored.
+- A subject's **year average** = mean of its non-null period averages.
+- Overall average = mean of the subjects that have at least one score.
+- Rank uses competition ranking (ties share a position).
+
+Grades are **colour-coded green → red** in the reports and the entry sheet;
+**5.5** is the minimal passing grade (below that is failing).
+
+**Report observations**
+
+- On each student report (period and year) the teacher/manager can write a
+  free-text **observation** ("Opmerking" / "ملاحظة") for that student. It is saved
+  per period or per year and appears on the report and on the printed A4, inside
+  a bordered frame.
+- Pressing **Afdrukbaar rapport** warns first when no observation has been
+  written.
+
+**Printing**
+
+- **Alle rapporten afdrukken** on a class report prints every student's report,
+  one A4 page each. If some students have no observation, a wizard walks through
+  them: it shows a **responsive preview** of each report and offers a textarea to
+  fill the observation (with skip) before printing.
+- The printed reports use **bilingual labels (Dutch + Arabic)**; the text
+  (student, subjects, observation) is shown as entered.
 
 ### 9. Donations
 
@@ -187,21 +233,23 @@ Moskee manages a small weekend school:
 
 1. Teachers act only on classes they teach; managers act anywhere.
 2. Only actively enrolled students are marked or graded.
-3. A grade's subject must belong to the class's level.
+3. An exam's subject must belong to the class's level.
 4. Scores are 1–10 or blank; donations are non-negative amounts (2 decimals,
    single currency).
-5. A graded term or subject, or a year with grades or donations, cannot be
-   deleted — history is protected. Periods must not overlap.
+5. A period or subject that already has exams, or a year with exams or
+   donations, cannot be deleted — history is protected. Periods must not overlap.
 6. At most one academic year is current.
 7. Donation amounts and payments are manager-only.
 
 ## Not built yet / roadmap
 
-- **UI pages**: sign-in exists; dashboards, class/student/guardian management,
-  attendance, grade entry, and report screens do not.
+- **UI pages**: sign-in, dashboards, class/student/guardian management,
+  attendance, exams/grade entry, and period report cards exist. The **donations**
+  UI is not built.
 - **Registration flow**: should set the student's expected donation (defaulting
   to the global amount) when a student is enrolled.
-- **Report export**: printable/PDF period and yearly report cards.
+- **Report export**: printable A4 report cards exist (browser print). A generated
+  PDF file (not just print-to-PDF) is still not built.
 - **Frozen report cards**: reports are live; persist snapshots only if published
   reports must not change retroactively.
 - **Donation installments / audit**: replace the single paid value with a
@@ -213,9 +261,9 @@ Moskee manages a small weekend school:
 
 | Value            | Formula / rule                                             |
 | ---------------- | ---------------------------------------------------------- |
-| Grade average    | mean of non-blank scores                                   |
-| Yearly subject avg | mean of that subject's non-blank term scores            |
-| Overall avg      | mean of per-subject averages                               |
+| Subject average  | coefficient-weighted mean of the subject's exam scores     |
+| Year subject avg | mean of the subject's non-null period averages             |
+| Overall avg      | mean of the per-subject averages (blank subjects ignored)  |
 | Rank             | 1 + number of classmates with a strictly higher average    |
 | Presence rate    | `(Present + Late + Very late) / total attendance marks`    |
 | Donation balance | `expectedAmount − paidAmount`                              |

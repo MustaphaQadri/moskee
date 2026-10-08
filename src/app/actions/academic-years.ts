@@ -115,7 +115,7 @@ export async function deleteAcademicYear(input: unknown): Promise<ActionResult> 
     const { id } = z.object({ id: z.string().min(1) }).parse(input);
 
     const [grades, donations] = await Promise.all([
-      prisma.grade.count({ where: { academicYearId: id } }),
+      prisma.exam.count({ where: { academicYearId: id } }),
       prisma.studentDonation.count({ where: { academicYearId: id } }),
     ]);
     if (grades > 0) {
