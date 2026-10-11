@@ -24,6 +24,7 @@ import {
   IconSettings,
   IconUserCog,
   IconUsers,
+  IconHeartHandshake,
 } from "@tabler/icons-react";
 
 import { authClient } from "@/lib/auth-client";
@@ -176,6 +177,14 @@ export function DashboardShell({
                 label="Inschrijvingen"
                 leftSection={<IconUsers size={18} />}
                 active={pathname.startsWith("/dashboard/guardians")}
+                onClick={close}
+              />
+              <NavLink
+                component={Link}
+                href="/dashboard/donations"
+                label="Donaties"
+                leftSection={<IconHeartHandshake size={18} />}
+                active={pathname.startsWith("/dashboard/donations")}
                 onClick={close}
               />
               <NavLink

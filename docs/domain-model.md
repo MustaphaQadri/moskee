@@ -22,6 +22,8 @@ visual schema lives in [`erd.md`](./erd.md) / [`erd.mmd`](./erd.mmd).
 | Action result helpers      | `src/lib/action-result.ts`                                      |
 | Subjects/terms/grades reads| `src/lib/grades.ts`                                             |
 | Donation reads             | `src/lib/donations.ts`                                          |
+| Student status labels      | `src/lib/student-status.ts`                                     |
+| Donation status labels     | `src/lib/donation-status.ts`                                    |
 | Server Actions             | `src/app/actions/*.ts`                                          |
 
 Reads are `server-only` modules; writes are `"use server"` actions. Both
@@ -39,7 +41,8 @@ Two groups of tables:
   `ClassSession`, `SchoolClass`, `SchoolClassSession`, `Enrollment`, the three
   `*Comment` tables, plus **`Attendance`**, **`AcademicYear`**, **`Term`**,
   **`Subject`**, **`Exam`**, **`Grade`**, **`PeriodReportObservation`**,
-  **`YearReportObservation`**, **`DonationSetting`**, **`StudentDonation`**.
+  **`YearReportObservation`**, **`StudentStatusEvent`**, **`DonationSetting`**,
+  **`StudentDonation`**, **`DonationPayment`**, **`DonationPaymentLog`**.
 
 Key relations:
 
@@ -55,8 +58,12 @@ User 1─* Grade ("recordedBy")        // author of the score
 SchoolClass 1─* Attendance           // presence, keyed by session + date
 Student 1─* Attendance
 ClassSession 1─* Attendance
-Student 1─* StudentDonation *─1 AcademicYear   // yearly donation
+Student 1─* StudentStatusEvent       // lifecycle history (waiting/active/archived)
+Student 1─* StudentDonation *─1 AcademicYear   // yearly donation expectation
+StudentDonation 1─* DonationPayment  // payment ledger (compound student+year)
+DonationPaymentLog                   // audit of payment create/update/delete
 User 1─* StudentDonation ("recordedBy")
+User 1─* DonationPayment ("recordedBy")
 DonationSetting                       // singleton global default amount
 ```
 
@@ -172,6 +179,17 @@ on a report; shown on the on-screen report and on the printed A4 report.
   (`src/app/actions/report-observations.ts`), which re-check class authorization
   and active enrollment.
 
+### Student lifecycle (`students.status`, `student_status_events`)
+
+- `Student.status`: `WAITING_LIST` (default — registered, no class yet) ·
+  `ACTIVE` (has an active enrollment) · `ARCHIVED` (had a class, none now).
+- Transitions happen in `src/app/actions/enrollments.ts`: assigning a class sets
+  `ACTIVE`, removing the last class archives the student, and a move keeps
+  `ACTIVE`. Registration creates students as `WAITING_LIST`.
+- **`StudentStatusEvent`** records each change (`fromStatus?`, `toStatus`,
+  `changedById?`, `changedAt`, `note?`) so the dates + actor are kept. Shown on
+  the student detail. The migration seeded one event per existing student.
+
 ### DonationSetting (`donation_settings`)
 
 A **singleton** row (`id = "default"`) holding the global default donation
@@ -180,21 +198,39 @@ but each student's expected amount is snapshotted per year (see below).
 
 ### StudentDonation (`student_donations`)
 
-One row per **student per year** — the yearly donation.
+One row per **student per year** — the yearly donation *expectation*.
 
 - `expectedAmount` — the amount to fulfil. Defaults from `DonationSetting` and is
-  overridable (registration sets it; some families pay less). `0` = exempt.
-- `paidAmount` — a single manually-updated value (no installments). Partial and
-  overpayment are allowed.
-- `category` — `FULL | REDUCED | EXEMPT` (classification of the expectation).
-- `paidAt`, `note`, `recordedById` — optional metadata.
+  overridable (set on first class assignment; some families pay less). `0` =
+  exempt.
+- `category` — `FULL | REDUCED | EXEMPT` (UI: Verschuldigd / Deels verschuldigd /
+  Vrijgesteld).
+- `note`, `recordedById` — optional metadata.
 - Unique `(studentId, academicYearId)`.
-- Balance and status are **derived on read**:
-  `balance = expectedAmount − paidAmount`,
+- Paid total, balance and status are **derived on read** from the payment ledger:
+  `paid = Σ payments` · `balance = expectedAmount − paid` ·
   `status = EXEMPT` (expected ≤ 0) · `PAID` (paid ≥ expected) ·
   `PARTIAL` (paid > 0) · `UNPAID`.
 - Reports left-join this row, so students without one fall back to the global
   default / `FULL` / `0` — rows do not need to be pre-created.
+
+### DonationPayment (`donation_payments`)
+
+The payment ledger: one row per payment toward a student's yearly donation.
+
+- `amount` `Decimal(10,2)` (> 0), `paidAt @db.Date`, `recordedById`, `note?`.
+- Belongs to a `StudentDonation` via the compound FK
+  `(studentId, academicYearId)` → the expectation must exist first (created
+  automatically with the default when absent).
+- A year's paid total is the **sum** of its rows; there is no stored total.
+
+### DonationPaymentLog (`donation_payment_logs`)
+
+Audit trail for the ledger. Every create/update/delete of a payment writes a row
+with `action` (`CREATED | UPDATED | DELETED`), `amountBefore`/`amountAfter`,
+`paidAtBefore`/`paidAtAfter`, `actorId` and `createdAt`. `paymentId` is
+`SetNull`, so **logs survive deletion** and are shown as "Mutaties" on the
+donation detail.
 
 ## Invariants (enforced in actions, not the DB)
 
@@ -209,8 +245,13 @@ One row per **student per year** — the yearly donation.
 5. At most one `AcademicYear.isCurrent = true`.
 6. `score` is `1..10` or null; `remark` ≤ 500 chars.
 7. Donation amounts are non-negative `Decimal(10,2)`; `expectedAmount` defaults
-   to the global setting when omitted.
-8. Donations are manager-only (`requireManager`).
+   to the global setting when omitted; payments must be `> 0`.
+8. Donations (default, expectations, payments) are manager-only (`requireManager`).
+9. A student has at most one active enrollment; their lifecycle status follows
+   from it (active with a class, archived without, waiting list until the first
+   assignment).
+10. Every payment create/update/delete is written to `DonationPaymentLog` (actor
+    + before/after values); the log survives payment deletion.
 
 ## Authorization
 
@@ -240,6 +281,14 @@ One row per **student per year** — the yearly donation.
 | `StudentDonation → Student`  | Cascade   | Removing a student removes their donation rows |
 | `StudentDonation → AcademicYear` | Restrict | Financial history; can't delete a year with donations |
 | `StudentDonation → User`     | SetNull   | Keep the record if the recorder is removed     |
+| `StudentStatusEvent → Student` | Cascade | Lifecycle history goes with the student        |
+| `StudentStatusEvent → User`  | SetNull   | Keep the history if the actor is removed       |
+| `DonationPayment → StudentDonation` | Cascade | Payments belong to the year's expectation  |
+| `DonationPayment → User`     | SetNull   | Keep the record if the recorder is removed     |
+| `DonationPaymentLog → DonationPayment` | SetNull | Audit survives payment deletion       |
+| `DonationPaymentLog → Student` | Cascade | Log entries go with the student               |
+| `DonationPaymentLog → AcademicYear` | Restrict | Financial history                     |
+| `DonationPaymentLog → User`  | SetNull   | Keep the audit if the actor is removed         |
 
 Actions pre-check exam/donation counts and throw friendly errors before relying
 on the DB `Restrict`.
@@ -297,20 +346,29 @@ term/year, falling back to their most recent active enrollment (see
 ## Donation reports (`src/lib/donations.ts`, read-only)
 
 - **`getDonationSetting()`** — the global default amount (0 if unset).
-- **`getStudentDonation({ studentId, academicYearId })`** — one student's row.
+- **`getStudentDonation({ studentId, academicYearId })`** — one student's
+  expectation with the paid total (sum of payments), balance, status and payment
+  count.
 - **`getDonationReport({ academicYearId, classId? })`** — who paid and who
   didn't: rows per student (all students, or active enrollments of `classId`)
-  with `expectedAmount`, `paidAmount`, `balance`, `category`, `status`, `paidAt`,
-  `note`; plus `totals` (expected, collected, outstanding, and counts per
-  status). Outstanding excludes exempt students (it sums only positive
-  balances). `Decimal` values are returned as `number`.
+  with `expectedAmount`, `paidAmount` (Σ payments), `balance`, `category`,
+  `status`, `note`, `paymentCount`; plus `totals` (expected, collected,
+  outstanding, and counts per status). Outstanding excludes exempt students (it
+  sums only positive balances). `Decimal` values are returned as `number`.
+- **`getStudentDonationHistory(studentId)`** — every year with an expectation:
+  the expectation, its `payments` ledger, paid/balance/status, and the
+  `DonationPaymentLog` entries. Backs the donation detail page.
+
+The UI list filters by status and sorts on the amount columns; both are done in
+the page over the report rows (URL-driven).
 
 ## Operational notes / gotchas
 
 - **Migration timestamps**: the original `init` migration was future-dated,
   which made newer migrations sort before it and broke the shadow database.
   Timestamps were normalized to real apply order
-  (`init` → `add_attendance` → `add_grades_subjects` → `add_donations`). Keep
+  (`init` → `add_attendance` → `add_grades_subjects` → `add_donations` →
+  `student_status_and_payments`). Keep
   migration folder timestamps monotonically increasing.
 - **Creating migrations**: `pnpm db:migrate -- --name x` drops into an
   interactive prompt because the extra `--` is passed through. Use
@@ -327,15 +385,16 @@ term/year, falling back to their most recent active enrollment (see
 ## Open items / next steps
 
 - **UI**: attendance, grade entry (exams) and period report cards have pages
-  under `/dashboard/classes/[id]`. The donation UI is still not built.
+  under `/dashboard/classes/[id]`; donations have `/dashboard/donations`
+  (list) and `/dashboard/donations/[studentId]` (detail), with the default
+  amount under **Beheer → Donaties**.
 - **Report snapshots**: reports are computed live. Add persisted report cards
   (frozen per term) only if published reports must not change retroactively.
-- **PDF/print export** for period and yearly reports.
+- **PDF/print export** for period and yearly reports; **CSV/print export** for
+  the donation report.
 - **Subject families** if cross-level subject aggregation is ever needed.
 - **Teacher per subject** (a `ClassSubject`/assignment table) if one class
   teacher stops being enough; grade authorization would move to that table.
-- **Donations in registration**: the registration flow (not built) should call
-  `setStudentDonation` with an overridden `expectedAmount`, defaulting to the
-  global setting.
-- **Donation payment history**: currently a single `paidAmount` per student/year.
-  Move to a payments table if installments/audit are needed.
+- **Donation expectations in registration**: registration still only creates the
+  student; the expectation is set on first class assignment. Could set it up
+  front when the class is known at registration time.

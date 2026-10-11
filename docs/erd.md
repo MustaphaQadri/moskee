@@ -62,6 +62,7 @@ erDiagram
         Sex sex
         timestamp dateOfBirth
         text image "url under /uploads/students"
+        StudentStatus status "WAITING_LIST | ACTIVE | ARCHIVED"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -270,18 +271,53 @@ erDiagram
         timestamp updatedAt
     }
 
+    student_status_events {
+        text id PK
+        text studentId FK
+        StudentStatus fromStatus "nullable"
+        StudentStatus toStatus
+        text changedById FK
+        timestamp changedAt
+        text note
+    }
+
     student_donations {
         text id PK
         text studentId FK,UK "unique per academicYear"
         text academicYearId FK,UK "unique per student"
         numeric expectedAmount "Decimal(10,2)"
-        numeric paidAmount "Decimal(10,2), default 0"
         DonationCategory category "FULL | REDUCED | EXEMPT"
+        text note
+        text recordedById FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    donation_payments {
+        text id PK
+        text studentId FK "with academicYearId -> student_donations"
+        text academicYearId FK
+        numeric amount "Decimal(10,2)"
         timestamp paidAt "DATE"
         text note
         text recordedById FK
         timestamp createdAt
         timestamp updatedAt
+    }
+
+    donation_payment_logs {
+        text id PK
+        text paymentId FK "SetNull on delete"
+        text studentId FK
+        text academicYearId FK
+        DonationPaymentAction action "CREATED | UPDATED | DELETED"
+        numeric amountBefore "Decimal(10,2), nullable"
+        numeric amountAfter "Decimal(10,2), nullable"
+        timestamp paidAtBefore "DATE, nullable"
+        timestamp paidAtAfter "DATE, nullable"
+        text note
+        text actorId FK
+        timestamp createdAt
     }
 
     User ||--o{ Session : "authenticates via"
@@ -332,9 +368,20 @@ erDiagram
     academic_years ||--o{ year_report_observations : "scopes"
     User |o--o{ year_report_observations : "writes"
 
+    students ||--o{ student_status_events : "changes state"
+    User |o--o{ student_status_events : "changes"
+
     students ||--o{ student_donations : "donates"
     academic_years ||--o{ student_donations : "receives"
     User |o--o{ student_donations : "records"
+
+    student_donations ||--o{ donation_payments : "is paid by"
+    User |o--o{ donation_payments : "records"
+
+    donation_payments |o--o{ donation_payment_logs : "is audited by"
+    students ||--o{ donation_payment_logs : "concerns"
+    academic_years ||--o{ donation_payment_logs : "scopes"
+    User |o--o{ donation_payment_logs : "acts"
 ```
 
 ## Legend
@@ -355,7 +402,9 @@ erDiagram
   `student_donations (studentId, academicYearId)`.
 - `Sex` is a PostgreSQL enum: `MALE | FEMALE`; `AttendanceStatus` is
   `PRESENT | LATE | VERY_LATE | ABSENT | EXCUSED`; `DonationCategory` is
-  `FULL | REDUCED | EXEMPT`.
+  `FULL | REDUCED | EXEMPT`; `StudentStatus` is
+  `WAITING_LIST | ACTIVE | ARCHIVED`; `DonationPaymentAction` is
+  `CREATED | UPDATED | DELETED`.
 - `_prisma_migrations` (Prisma's bookkeeping table) is omitted — infrastructure,
   not application data.
 

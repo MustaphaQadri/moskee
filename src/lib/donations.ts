@@ -2,12 +2,40 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
-import type { DonationCategory } from "@/generated/prisma/enums";
+import { statusOf, type DonationStatus } from "@/lib/donation-status";
+import type {
+  DonationCategory,
+  DonationPaymentAction,
+} from "@/generated/prisma/enums";
 
 // Read side of donations. Balance/status are always derived from
-// `expectedAmount - paidAmount`; nothing is stored. Server-only.
+// `expectedAmount − paidTotal` (paidTotal = sum of the payment ledger);
+// nothing is stored. Server-only.
 
-export type DonationStatus = "PAID" | "PARTIAL" | "UNPAID" | "EXEMPT";
+export { statusOf };
+export type { DonationStatus };
+
+export type DonationPaymentDTO = {
+  id: string;
+  amount: number;
+  paidAt: string | null;
+  note: string | null;
+  recordedById: string | null;
+  recordedByName: string | null;
+  createdAt: string; // ISO
+};
+
+export type DonationPaymentLogDTO = {
+  id: string;
+  action: DonationPaymentAction;
+  amountBefore: number | null;
+  amountAfter: number | null;
+  paidAtBefore: string | null;
+  paidAtAfter: string | null;
+  note: string | null;
+  actorName: string | null;
+  createdAt: string; // ISO
+};
 
 export type StudentDonationDTO = {
   studentId: string;
@@ -17,8 +45,8 @@ export type StudentDonationDTO = {
   balance: number;
   category: DonationCategory;
   status: DonationStatus;
-  paidAt: string | null;
   note: string | null;
+  paymentCount: number;
 };
 
 export type DonationReportRowDTO = StudentDonationDTO & {
@@ -42,36 +70,47 @@ export type DonationReportDTO = {
   };
 };
 
+export type DonationYearHistoryDTO = {
+  academicYear: { id: string; name: string; isCurrent: boolean };
+  expectedAmount: number;
+  category: DonationCategory;
+  paidAmount: number;
+  balance: number;
+  status: DonationStatus;
+  note: string | null;
+  payments: DonationPaymentDTO[];
+  logs: DonationPaymentLogDTO[];
+};
+
+export type StudentDonationHistoryDTO = {
+  student: { id: string; firstName: string; lastName: string };
+  defaultAmount: number;
+  years: DonationYearHistoryDTO[];
+};
+
 export const DONATION_SETTING_ID = "default";
 
-function statusOf(expected: number, paid: number): DonationStatus {
-  if (expected <= 0) return "EXEMPT";
-  if (paid >= expected) return "PAID";
-  if (paid > 0) return "PARTIAL";
-  return "UNPAID";
+function sumPayments(payments: { amount: unknown }[]): number {
+  return payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
 }
 
-function toDTO(row: {
-  studentId: string;
-  academicYearId: string;
-  expectedAmount: unknown;
-  paidAmount: unknown;
-  category: DonationCategory;
+function paymentDTO(row: {
+  id: string;
+  amount: unknown;
   paidAt: Date | null;
   note: string | null;
-}): StudentDonationDTO {
-  const expectedAmount = Number(row.expectedAmount);
-  const paidAmount = Number(row.paidAmount);
+  recordedById: string | null;
+  createdAt: Date;
+  recordedBy: { name: string } | null;
+}): DonationPaymentDTO {
   return {
-    studentId: row.studentId,
-    academicYearId: row.academicYearId,
-    expectedAmount,
-    paidAmount,
-    balance: expectedAmount - paidAmount,
-    category: row.category,
-    status: statusOf(expectedAmount, paidAmount),
+    id: row.id,
+    amount: Number(row.amount),
     paidAt: toDateOnly(row.paidAt),
     note: row.note,
+    recordedById: row.recordedById,
+    recordedByName: row.recordedBy?.name ?? null,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -99,13 +138,26 @@ export async function getStudentDonation(params: {
       studentId: true,
       academicYearId: true,
       expectedAmount: true,
-      paidAmount: true,
       category: true,
-      paidAt: true,
       note: true,
+      payments: { select: { amount: true } },
     },
   });
-  return row ? toDTO(row) : null;
+  if (!row) return null;
+
+  const expectedAmount = Number(row.expectedAmount);
+  const paidAmount = sumPayments(row.payments);
+  return {
+    studentId: row.studentId,
+    academicYearId: row.academicYearId,
+    expectedAmount,
+    paidAmount,
+    balance: expectedAmount - paidAmount,
+    category: row.category,
+    status: statusOf(expectedAmount, paidAmount),
+    note: row.note,
+    paymentCount: row.payments.length,
+  };
 }
 
 // Who paid and who didn't for a year (optionally one class). Students without a
@@ -128,8 +180,15 @@ export async function getDonationReport(params: {
     ? (
         await prisma.enrollment.findMany({
           where: { classId: params.classId, status: "active" },
-          select: { student: { select: { id: true, firstName: true, lastName: true } } },
-          orderBy: [{ student: { lastName: "asc" } }, { student: { firstName: "asc" } }],
+          select: {
+            student: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+          orderBy: [
+            { student: { lastName: "asc" } },
+            { student: { firstName: "asc" } },
+          ],
         })
       ).map((enrollment) => enrollment.student)
     : await prisma.student.findMany({
@@ -146,28 +205,32 @@ export async function getDonationReport(params: {
       studentId: true,
       academicYearId: true,
       expectedAmount: true,
-      paidAmount: true,
       category: true,
-      paidAt: true,
       note: true,
+      payments: { select: { amount: true } },
     },
   });
   const byStudent = new Map(donations.map((row) => [row.studentId, row]));
 
   const rows: DonationReportRowDTO[] = students.map((student) => {
     const existing = byStudent.get(student.id);
-    const base = existing
-      ? toDTO(existing)
-      : toDTO({
-          studentId: student.id,
-          academicYearId: params.academicYearId,
-          expectedAmount: setting.defaultAmount,
-          paidAmount: 0,
-          category: "FULL",
-          paidAt: null,
-          note: null,
-        });
-    return { ...base, firstName: student.firstName, lastName: student.lastName };
+    const expectedAmount = existing
+      ? Number(existing.expectedAmount)
+      : setting.defaultAmount;
+    const paidAmount = existing ? sumPayments(existing.payments) : 0;
+    return {
+      studentId: student.id,
+      academicYearId: params.academicYearId,
+      expectedAmount,
+      paidAmount,
+      balance: expectedAmount - paidAmount,
+      category: existing?.category ?? "FULL",
+      status: statusOf(expectedAmount, paidAmount),
+      note: existing?.note ?? null,
+      paymentCount: existing?.payments.length ?? 0,
+      firstName: student.firstName,
+      lastName: student.lastName,
+    };
   });
 
   const totals = {
@@ -196,4 +259,117 @@ export async function getDonationReport(params: {
     rows,
     totals,
   };
+}
+
+// Full payment history for one student: every year with an expectation, its
+// payment ledger and the audit log of mutations.
+export async function getStudentDonationHistory(
+  studentId: string,
+): Promise<StudentDonationHistoryDTO | null> {
+  const [student, setting, donations, logs, currentYear] = await Promise.all([
+    prisma.student.findUnique({
+      where: { id: studentId },
+      select: { id: true, firstName: true, lastName: true },
+    }),
+    getDonationSetting(),
+    prisma.studentDonation.findMany({
+      where: { studentId },
+      orderBy: { academicYear: { name: "desc" } },
+      select: {
+        academicYearId: true,
+        expectedAmount: true,
+        category: true,
+        note: true,
+        academicYear: { select: { id: true, name: true, isCurrent: true } },
+        payments: {
+          orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+          select: {
+            id: true,
+            amount: true,
+            paidAt: true,
+            note: true,
+            recordedById: true,
+            createdAt: true,
+            recordedBy: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.donationPaymentLog.findMany({
+      where: { studentId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        action: true,
+        academicYearId: true,
+        amountBefore: true,
+        amountAfter: true,
+        paidAtBefore: true,
+        paidAtAfter: true,
+        note: true,
+        createdAt: true,
+        actor: { select: { name: true } },
+      },
+    }),
+    prisma.academicYear.findFirst({
+      where: { isCurrent: true },
+      select: { id: true, name: true, isCurrent: true },
+    }),
+  ]);
+
+  if (!student) return null;
+
+  const logsByYear = new Map<string, DonationPaymentLogDTO[]>();
+  for (const log of logs) {
+    const list = logsByYear.get(log.academicYearId) ?? [];
+    list.push({
+      id: log.id,
+      action: log.action,
+      amountBefore: log.amountBefore === null ? null : Number(log.amountBefore),
+      amountAfter: log.amountAfter === null ? null : Number(log.amountAfter),
+      paidAtBefore: toDateOnly(log.paidAtBefore),
+      paidAtAfter: toDateOnly(log.paidAtAfter),
+      note: log.note,
+      actorName: log.actor?.name ?? null,
+      createdAt: log.createdAt.toISOString(),
+    });
+    logsByYear.set(log.academicYearId, list);
+  }
+
+  const years: DonationYearHistoryDTO[] = donations.map((row) => {
+    const expectedAmount = Number(row.expectedAmount);
+    const paidAmount = sumPayments(row.payments);
+    return {
+      academicYear: row.academicYear,
+      expectedAmount,
+      category: row.category,
+      paidAmount,
+      balance: expectedAmount - paidAmount,
+      status: statusOf(expectedAmount, paidAmount),
+      note: row.note,
+      payments: row.payments.map(paymentDTO),
+      logs: logsByYear.get(row.academicYearId) ?? [],
+    };
+  });
+
+  // Always surface the current school year so a payment can be recorded even
+  // before an expectation row exists (adding a payment creates it).
+  if (
+    currentYear &&
+    !years.some((year) => year.academicYear.id === currentYear.id)
+  ) {
+    years.unshift({
+      academicYear: currentYear,
+      expectedAmount: setting.defaultAmount,
+      category: setting.defaultAmount > 0 ? "FULL" : "EXEMPT",
+      paidAmount: 0,
+      balance: setting.defaultAmount,
+      status: statusOf(setting.defaultAmount, 0),
+      note: null,
+      payments: [],
+      logs: [],
+    });
+  }
+
+  return { student, defaultAmount: setting.defaultAmount, years };
 }

@@ -35,9 +35,21 @@ import {
   listGuardians,
 } from "@/lib/guardians";
 import { isStudentSortKey, listStudents } from "@/lib/students";
+import {
+  STUDENT_STATUS_COLORS,
+  STUDENT_STATUS_LABELS,
+  isStudentStatus,
+} from "@/lib/student-status";
 import type { SortDir } from "@/lib/sort";
 
 type TabValue = "guardians" | "students";
+
+const STUDENT_STATUS_OPTIONS = [
+  { value: "", label: "Alle" },
+  { value: "WAITING_LIST", label: "Wachtlijst" },
+  { value: "ACTIVE", label: "Actief" },
+  { value: "ARCHIVED", label: "Gearchiveerd" },
+] as const;
 
 function SearchBar({
   tab,
@@ -141,10 +153,16 @@ export default async function GuardiansPage({
 
   const guardianSort = isGuardianSortKey(sortParam) ? sortParam : "name";
   const studentSort = isStudentSortKey(sortParam) ? sortParam : "name";
+  const studentStatus = isStudentStatus(params.status) ? params.status : "";
 
   const [guardians, students] = await Promise.all([
     listGuardians({ search, sort: guardianSort, dir }),
-    listStudents({ search, sort: studentSort, dir }),
+    listStudents({
+      search,
+      sort: studentSort,
+      dir,
+      status: studentStatus || undefined,
+    }),
   ]);
 
   return (
@@ -276,6 +294,25 @@ export default async function GuardiansPage({
               search={search}
             />
 
+            <Group gap="xs">
+              {STUDENT_STATUS_OPTIONS.map((option) => {
+                const pillParams = new URLSearchParams({ tab: "students" });
+                if (search) pillParams.set("q", search);
+                if (option.value) pillParams.set("status", option.value);
+                return (
+                  <Button
+                    key={option.value}
+                    component="a"
+                    href={`/dashboard/guardians?${pillParams.toString()}`}
+                    size="xs"
+                    variant={studentStatus === option.value ? "filled" : "default"}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </Group>
+
             {students.length === 0 ? (
               <Text c="dimmed">
                 {search
@@ -311,6 +348,7 @@ export default async function GuardiansPage({
                         current={studentSort}
                         dir={dir}
                       />
+                      <TableTh>Status</TableTh>
                     </TableTr>
                   </TableThead>
                   <TableTbody>
@@ -366,6 +404,14 @@ export default async function GuardiansPage({
                               ))}
                             </Group>
                           )}
+                        </TableTd>
+                        <TableTd>
+                          <Badge
+                            variant="light"
+                            color={STUDENT_STATUS_COLORS[student.status]}
+                          >
+                            {STUDENT_STATUS_LABELS[student.status]}
+                          </Badge>
                         </TableTd>
                       </TableTr>
                     ))}

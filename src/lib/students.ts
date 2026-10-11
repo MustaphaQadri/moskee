@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
 import { sortRows, type SortDir } from "@/lib/sort";
-import type { Sex } from "@/generated/prisma/enums";
+import type { Sex, StudentStatus } from "@/generated/prisma/enums";
 
 // Read side of a single student: identity, guardians, class history and the
 // comments kept for the whole study. Server-only.
@@ -16,6 +16,7 @@ export type StudentListItemDTO = {
   lastName: string;
   dateOfBirth: string | null;
   image: string | null;
+  status: StudentStatus;
   class: { id: string; name: string } | null;
   guardians: {
     id: string;
@@ -53,20 +54,24 @@ function studentSortValue(
 // by the "Inschrijvingen" overview. `search` matches first/last name.
 export async function listStudents(params: {
   search?: string;
+  status?: StudentStatus;
   sort?: StudentSortKey;
   dir?: SortDir;
 } = {}): Promise<StudentListItemDTO[]> {
   const search = params.search?.trim();
 
   const students = await prisma.student.findMany({
-    where: search
-      ? {
-          OR: [
-            { firstName: { contains: search, mode: "insensitive" as const } },
-            { lastName: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : undefined,
+    where: {
+      ...(params.status ? { status: params.status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { firstName: { contains: search, mode: "insensitive" as const } },
+              { lastName: { contains: search, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     select: {
       id: true,
@@ -74,6 +79,7 @@ export async function listStudents(params: {
       lastName: true,
       dateOfBirth: true,
       image: true,
+      status: true,
       enrollments: {
         where: { status: "active" },
         take: 1,
@@ -96,6 +102,7 @@ export async function listStudents(params: {
     lastName: student.lastName,
     dateOfBirth: toDateOnly(student.dateOfBirth),
     image: student.image,
+    status: student.status,
     class: student.enrollments[0]?.class ?? null,
     guardians: student.guardians.map((link) => ({
       id: link.guardian.id,
@@ -125,6 +132,15 @@ export type StudentDetailDTO = {
   sex: Sex | null;
   dateOfBirth: string | null;
   image: string | null;
+  status: StudentStatus;
+  statusHistory: {
+    id: string;
+    fromStatus: StudentStatus | null;
+    toStatus: StudentStatus;
+    changedAt: string; // ISO
+    changedByName: string | null;
+    note: string | null;
+  }[];
   guardians: {
     id: string;
     firstName: string;
@@ -172,6 +188,18 @@ export async function getStudentDetail(
       sex: true,
       dateOfBirth: true,
       image: true,
+      status: true,
+      statusEvents: {
+        orderBy: { changedAt: "desc" },
+        select: {
+          id: true,
+          fromStatus: true,
+          toStatus: true,
+          changedAt: true,
+          note: true,
+          changedBy: { select: { name: true } },
+        },
+      },
       guardians: {
         select: {
           relation: true,
@@ -224,6 +252,15 @@ export async function getStudentDetail(
     sex: student.sex,
     dateOfBirth: toDateOnly(student.dateOfBirth),
     image: student.image,
+    status: student.status,
+    statusHistory: student.statusEvents.map((event) => ({
+      id: event.id,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      changedAt: event.changedAt.toISOString(),
+      changedByName: event.changedBy?.name ?? null,
+      note: event.note,
+    })),
     guardians: student.guardians.map((link) => ({
       id: link.guardian.id,
       firstName: link.guardian.firstName,

@@ -10,7 +10,9 @@ What Moskee does, in product terms. This is the companion to
 > and classes (grid, detail, enroll/move students, per-student comments).
 > **Attendance** has a UI (per-meeting sheet and student summaries); **grades**
 > have exams, a per-exam entry sheet, and period report cards under the class's
-> **Cijfers** button. The donations UI is still not built.
+> **Cijfers** button. Students have a **lifecycle state** (waiting list / active /
+> archived) with history, and **donations** have a UI (per-year report, payment
+> ledger and audit) with the default amount in Beheer.
 
 ## Purpose
 
@@ -48,9 +50,11 @@ Moskee manages a small weekend school:
 | **Term / Period**   | A recurring period defined by months (e.g. Sept–Dec), shared by every year. |
 | **Subject**         | A subject offered at a level ("Math"); the same name exists once per level. |
 | **Enrollment**      | The link between a student and a class, with start/end dates and status. |
+| **Student state**   | Lifecycle of a student: **waiting list** (no class yet), **active**, or **archived** (had a class, no longer). |
 | **Exam**            | One test for a class + subject + period + year; a teacher can add several per subject per period. |
 | **Grade**           | A student's score on one exam (1–10, or blank).                          |
-| **Donation**        | A yearly amount a family is expected to give for a student.             |
+| **Donation**        | A yearly amount a family is expected to give for a student (the expectation). |
+| **Payment**         | One recorded payment (amount, date, recorder, optional comment) toward a student's yearly donation. |
 
 ## Features
 
@@ -59,6 +63,12 @@ Moskee manages a small weekend school:
 - A **student** has first/last name, optional sex (boy/girl), date of birth, and
   an optional **photo** (added during enrollment; shown in the student detail,
   the enrollment overview, and class rosters).
+- A student has a **lifecycle state**: **waiting list** (registered, no class
+  yet), **active** (has a class), or **archived** (had a class, no longer).
+  New registrations start on the waiting list; assigning a class activates them,
+  removing their last class archives them; archived students are re-activated by
+  assigning a class again. Every change is timestamped with who made it
+  (status history on the student detail).
 - A **guardian** has first/last name, optional email, phone, and address.
 - Students and guardians are linked many-to-many; each link records the
   **relation** ("mother", "father", "aunt", …). A guardian can be related
@@ -67,8 +77,9 @@ Moskee manages a small weekend school:
   directly from the student detail page, using the same fields as enrollment.
 - Both students and guardians can carry free-text comments from staff.
 - The **Inschrijvingen** overview has two tabs: **Ouders/verzorgers** (guardian
-  list) and **Leerlingen** (student list, showing each student's class and
-  linked guardians).
+  list) and **Leerlingen** (student list, showing each student's class, linked
+  guardians and lifecycle state). The student list can be filtered by state
+  (waiting list / active / archived).
 
 ### 2. Classes & scheduling
 
@@ -86,9 +97,14 @@ Moskee manages a small weekend school:
 - Only **active** enrollments appear on rosters and can be marked/graded.
 - Working assumption: **one class per student per term** (a class teaches all
   subjects for its level).
+- Assigning a **first-time** class (a student with no active class) prompts the
+  manager to set the **yearly donation** for the current school year — required,
+  with three choices: **Verschuldigd** (the Beheer default), **Deels
+  verschuldigd** (manager enters an amount), or **Vrijgesteld** (0). Moving a
+  student between classes does not prompt again.
 - In a class, a manager can select multiple students and **move** them to
   another class, or **remove** them from the class (they are left without a
-  class). Both actions ask for confirmation first.
+  class and **archived**). Both actions ask for confirmation first.
 
 ### 4. Attendance
 
@@ -210,24 +226,35 @@ Grades are **colour-coded green → red** in the reports and the entry sheet;
 
 ### 9. Donations
 
-- A single **global default amount** is configured centrally (one value, not
-  per year).
-- Each student has an **expected amount per year**. It starts from the global
-  default and can be overridden — some families pay less, some nothing.
-  The override is set during registration (or later) and can be classified as
-  **Full**, **Reduced**, or **Exempt** (`0`).
-- A single **paid amount** is recorded per student per year (partial and
-  overpayment allowed), with an optional payment date and note. There are no
-  installments.
+- A single **global default amount** is configured in **Beheer → Donaties** (one
+  value, not per year).
+- Each student has an **expected amount per year** (the *expectation*). It starts
+  from the global default and can be overridden, classified as **Verschuldigd**
+  (`FULL`), **Deels verschuldigd** (`REDUCED`) or **Vrijgesteld** (`EXEMPT`, `0`).
+  It is set when a student is assigned a class (or edited later from the donation
+  detail).
+- Money received is a **payment ledger**: each **payment** records an amount, a
+  date, the manager who recorded it, and an optional comment. A student can make
+  several payments per year, and partial/overpayment is allowed. A year's paid
+  total is the **sum of its payments**.
+- Every payment change is **audited**: creates, edits and deletions are logged
+  with the actor and timestamp (the "Mutaties" list on the donation detail,
+  which survives deletion).
 - **Status** is derived from `expected − paid`:
-  - **Exempt** — expected is 0;
-  - **Paid** — paid ≥ expected;
-  - **Partial** — something paid but less than expected;
-  - **Unpaid** — nothing paid.
-- The **donation report** shows, per student for a year (optionally filtered to a
-  class): expected, paid, balance, category and status, plus totals (expected,
-  collected, outstanding) and counts per status. Students without a donation row
-  are shown with the global default and "unpaid".
+  - **Vrijgesteld** — expected is 0;
+  - **Betaald** — paid ≥ expected;
+  - **Deels betaald** — something paid but less than expected;
+  - **Niet betaald** — nothing paid.
+- The **Donaties** page lists, per student for a chosen school year (current one
+  preselected): name, expected, paid (coloured green → red by how much is paid),
+  outstanding, and status. It can be **filtered** by status (paid / partial /
+  unpaid / exempt) and the amount columns are **sortable**. Totals (expected,
+  paid, outstanding) are shown above the list.
+- Selecting a student opens their **donation detail**: every school year they
+  have an expectation for, its payments, whether it is fully paid, and where a
+  manager can add, edit or delete payments.
+- Students without a donation row are shown with the global default and
+  "unpaid".
 
 ## Business rules (plain language)
 
@@ -239,21 +266,24 @@ Grades are **colour-coded green → red** in the reports and the entry sheet;
 5. A period or subject that already has exams, or a year with exams or
    donations, cannot be deleted — history is protected. Periods must not overlap.
 6. At most one academic year is current.
-7. Donation amounts and payments are manager-only.
+7. Donation expectations, payments and the default amount are manager-only. A
+   student's expectation is set on first class assignment; payment records are
+   append-edit-delete but always audited.
+8. A student has at most one active class; their lifecycle state follows from
+   it (active with a class, archived without, waiting list until the first).
 
 ## Not built yet / roadmap
 
 - **UI pages**: sign-in, dashboards, class/student/guardian management,
-  attendance, exams/grade entry, and period report cards exist. The **donations**
-  UI is not built.
-- **Registration flow**: should set the student's expected donation (defaulting
-  to the global amount) when a student is enrolled.
+  attendance, exams/grade entry, period report cards, and donations all exist.
+- **Registration flow**: still sets only the student record; the donation
+  expectation is set on first class assignment. Registration could set it up
+  front when the class is known at registration time.
 - **Report export**: printable A4 report cards exist (browser print). A generated
   PDF file (not just print-to-PDF) is still not built.
 - **Frozen report cards**: reports are live; persist snapshots only if published
   reports must not change retroactively.
-- **Donation installments / audit**: replace the single paid value with a
-  payments table if needed.
+- **Donation export**: a CSV/print export of the donation report is not built.
 - **Cross-level subject reporting** and **teacher-per-subject** if the school
   grows into needing them.
 
@@ -266,5 +296,6 @@ Grades are **colour-coded green → red** in the reports and the entry sheet;
 | Overall avg      | mean of the per-subject averages (blank subjects ignored)  |
 | Rank             | 1 + number of classmates with a strictly higher average    |
 | Presence rate    | `(Present + Late + Very late) / total attendance marks`    |
-| Donation balance | `expectedAmount − paidAmount`                              |
-| Donation status  | Exempt / Paid / Partial / Unpaid (see above)               |
+| Donation paid    | sum of the student's payments for the year                 |
+| Donation balance | `expectedAmount − paidTotal`                               |
+| Donation status  | Vrijgesteld / Betaald / Deels betaald / Niet betaald (see above) |

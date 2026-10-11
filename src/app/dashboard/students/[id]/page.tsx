@@ -33,6 +33,10 @@ import {
 } from "@/lib/attendance-status";
 import { PieChart } from "@/components/pie-chart";
 import { SEX_LABELS } from "@/app/dashboard/guardians/options";
+import {
+  STUDENT_STATUS_COLORS,
+  STUDENT_STATUS_LABELS,
+} from "@/lib/student-status";
 import { CommentsSection } from "./comments";
 import { EditStudentProfileButton } from "./edit-student-profile";
 
@@ -40,6 +44,13 @@ function formatDate(value: string | null): string {
   if (!value) return "—";
   const [year, month, day] = value.split("-");
   return `${day}-${month}-${year}`;
+}
+
+function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("nl-NL", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(iso));
 }
 
 export default async function StudentDetailPage({
@@ -125,6 +136,12 @@ export default async function StudentDetailPage({
                   {SEX_LABELS[student.sex] ?? student.sex}
                 </Badge>
               )}
+              <Badge
+                variant="light"
+                color={STUDENT_STATUS_COLORS[student.status]}
+              >
+                {STUDENT_STATUS_LABELS[student.status]}
+              </Badge>
             </Group>
             <Text c="dimmed">
               Geboortedatum: {formatDate(student.dateOfBirth)}
@@ -213,6 +230,49 @@ export default async function StudentDetailPage({
                     </TableTd>
                     <TableTd>{formatDate(enrollment.startDate)}</TableTd>
                     <TableTd>{formatDate(enrollment.endDate)}</TableTd>
+                  </TableTr>
+                ))}
+              </TableTbody>
+            </Table>
+          </TableScrollContainer>
+        )}
+      </Card>
+
+      <Card withBorder>
+        <Title order={5} mb="sm">
+          Status
+        </Title>
+        {student.statusHistory.length === 0 ? (
+          <Text c="dimmed">Nog geen statuswijzigingen.</Text>
+        ) : (
+          <TableScrollContainer minWidth={520}>
+            <Table striped highlightOnHover>
+              <TableThead>
+                <TableTr>
+                  <TableTh>Datum</TableTh>
+                  <TableTh>Van</TableTh>
+                  <TableTh>Naar</TableTh>
+                  <TableTh>Door</TableTh>
+                </TableTr>
+              </TableThead>
+              <TableTbody>
+                {student.statusHistory.map((event) => (
+                  <TableTr key={event.id}>
+                    <TableTd>{formatDateTime(event.changedAt)}</TableTd>
+                    <TableTd>
+                      {event.fromStatus
+                        ? STUDENT_STATUS_LABELS[event.fromStatus]
+                        : "—"}
+                    </TableTd>
+                    <TableTd>
+                      <Badge
+                        variant="light"
+                        color={STUDENT_STATUS_COLORS[event.toStatus]}
+                      >
+                        {STUDENT_STATUS_LABELS[event.toStatus]}
+                      </Badge>
+                    </TableTd>
+                    <TableTd>{event.changedByName ?? "—"}</TableTd>
                   </TableTr>
                 ))}
               </TableTbody>

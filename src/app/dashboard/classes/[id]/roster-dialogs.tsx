@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useForm } from "@mantine/form";
 import {
   Button,
   Group,
   Modal,
+  NumberInput,
+  Radio,
   Stack,
   Table,
   TableScrollContainer,
@@ -30,17 +33,100 @@ export type EnrollableStudent = {
   currentClass: { id: string; name: string } | null;
 };
 
+type DonationChoice = "FULL" | "REDUCED" | "EXEMPT";
+
+function euro(value: number): string {
+  return new Intl.NumberFormat("nl-NL", {
+    style: "currency",
+    currency: "EUR",
+  }).format(value);
+}
+
+function DonationPrompt({
+  student,
+  defaultAmount,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  student: EnrollableStudent;
+  defaultAmount: number;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: (donation: {
+    category: DonationChoice;
+    expectedAmount?: number;
+  }) => void;
+}) {
+  const form = useForm({
+    initialValues: { category: "FULL" as DonationChoice, amount: defaultAmount },
+  });
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const { category, amount } = form.values;
+        onConfirm({
+          category,
+          expectedAmount: category === "REDUCED" ? Number(amount) : undefined,
+        });
+      }}
+    >
+      <Stack>
+        <Text size="sm" c="dimmed">
+          {student.firstName} {student.lastName} krijgt een klas. Stel de
+          jaarlijkse donatie in.
+        </Text>
+
+        <Radio.Group label="Type bijdrage" {...form.getInputProps("category")}>
+          <Stack gap="xs" mt="xs">
+            <Radio value="FULL" label={`Verschuldigd (${euro(defaultAmount)})`} />
+            <Radio value="REDUCED" label="Deels verschuldigd" />
+            <Radio value="EXEMPT" label="Vrijgesteld" />
+          </Stack>
+        </Radio.Group>
+
+        {form.values.category === "REDUCED" && (
+          <NumberInput
+            label="Bedrag"
+            min={0}
+            decimalScale={2}
+            fixedDecimalScale
+            prefix="€ "
+            {...form.getInputProps("amount")}
+          />
+        )}
+
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onCancel}>
+            Annuleren
+          </Button>
+          <Button type="submit" loading={loading}>
+            Toevoegen
+          </Button>
+        </Group>
+      </Stack>
+    </form>
+  );
+}
+
 export function AddStudentButton({
   classId,
   students,
+  defaultDonationAmount,
 }: {
   classId: string;
   students: EnrollableStudent[];
+  defaultDonationAmount: number;
 }) {
   const [opened, { open, close }] = useDisclosure(false);
   const [query, setQuery] = useState("");
   const [addingId, setAddingId] = useState<string | null>(null);
   const [added, setAdded] = useState<string[]>([]);
+  const [promptStudent, setPromptStudent] = useState<EnrollableStudent | null>(
+    null,
+  );
   const handleResult = useActionFeedback();
 
   const filtered = students.filter((student) => {
@@ -49,13 +135,30 @@ export function AddStudentButton({
     return haystack.includes(query.trim().toLowerCase());
   });
 
-  async function add(studentId: string) {
-    setAddingId(studentId);
-    const result = await enrollStudent({ classId, studentId });
+  async function add(
+    student: EnrollableStudent,
+    donation?: { category: DonationChoice; expectedAmount?: number },
+  ) {
+    setAddingId(student.id);
+    const result = await enrollStudent({
+      classId,
+      studentId: student.id,
+      donation,
+    });
     setAddingId(null);
     if (handleResult(result, "Leerling toegevoegd.")) {
-      setAdded((prev) => [...prev, studentId]);
+      setAdded((prev) => [...prev, student.id]);
+      setPromptStudent(null);
     }
+  }
+
+  function startAdd(student: EnrollableStudent) {
+    // Moving between classes: no new expectation is needed.
+    if (student.currentClass) {
+      void add(student);
+      return;
+    }
+    setPromptStudent(student);
   }
 
   return (
@@ -63,6 +166,7 @@ export function AddStudentButton({
       <Button leftSection={<IconPlus size={16} />} onClick={open}>
         Leerling toevoegen
       </Button>
+
       <Modal
         opened={opened}
         onClose={close}
@@ -106,7 +210,7 @@ export function AddStudentButton({
                             size="xs"
                             variant="light"
                             loading={addingId === student.id}
-                            onClick={() => add(student.id)}
+                            onClick={() => startAdd(student)}
                           >
                             Toevoegen
                           </Button>
@@ -119,6 +223,22 @@ export function AddStudentButton({
             </TableScrollContainer>
           )}
         </Stack>
+      </Modal>
+
+      <Modal
+        opened={promptStudent !== null}
+        onClose={() => setPromptStudent(null)}
+        title="Donatie instellen"
+      >
+        {promptStudent && (
+          <DonationPrompt
+            student={promptStudent}
+            defaultAmount={defaultDonationAmount}
+            loading={addingId === promptStudent.id}
+            onCancel={() => setPromptStudent(null)}
+            onConfirm={(donation) => add(promptStudent, donation)}
+          />
+        )}
       </Modal>
     </>
   );
@@ -138,7 +258,7 @@ export function RemoveStudentButton({
   return (
     <ConfirmDeleteButton
       itemName={studentName}
-      description="De inschrijving wordt op inactief gezet; de historiek blijft bewaard."
+      description="De inschrijving wordt op inactief gezet; de leerling wordt gearchiveerd."
       onConfirm={async () =>
         handleResult(
           await unenrollStudent({ classId, studentId }),

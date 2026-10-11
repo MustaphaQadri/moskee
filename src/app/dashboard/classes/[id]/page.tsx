@@ -25,6 +25,7 @@ import {
   listClassOptions,
   listStudentsForEnrollment,
 } from "@/lib/classes";
+import { getDonationSetting } from "@/lib/donations";
 import { AddStudentButton } from "./roster-dialogs";
 import { RosterTable } from "./roster-table";
 import { DeleteClassButton } from "./class-actions";
@@ -57,6 +58,9 @@ export default async function ClassDetailPage({
   const moveTargets = staff.isTeacher
     ? []
     : await listClassOptions(schoolClass.id);
+  const defaultDonationAmount = staff.isTeacher
+    ? 0
+    : (await getDonationSetting()).defaultAmount;
 
   return (
     <Stack gap="md">
@@ -167,6 +171,7 @@ export default async function ClassDetailPage({
             <AddStudentButton
               classId={schoolClass.id}
               students={enrollable}
+              defaultDonationAmount={defaultDonationAmount}
             />
           )}
         </Group>

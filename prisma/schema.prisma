@@ -47,6 +47,9 @@ model User {
   recordedExams   Exam[]           @relation("ExamRecorder")
   recordedGrades  Grade[]          @relation("GradeRecorder")
   recordedDonations StudentDonation[] @relation("DonationRecorder")
+  studentStatusChanges StudentStatusEvent[] @relation("StudentStatusChanger")
+  recordedDonationPayments DonationPayment[] @relation("DonationPaymentRecorder")
+  donationPaymentLogs DonationPaymentLog[] @relation("DonationPaymentLogActor")
   recordedPeriodReportObservations PeriodReportObservation[] @relation("PeriodReportObservationRecorder")
   recordedYearReportObservations   YearReportObservation[]   @relation("YearReportObservationRecorder")
 }
@@ -104,6 +107,15 @@ enum Sex {
   FEMALE
 }
 
+// Lifecycle of a student. WAITING_LIST = registered but no class yet;
+// ACTIVE = has a class; ARCHIVED = had a class but no longer does. Transitions
+// are recorded in StudentStatusEvent.
+enum StudentStatus {
+  WAITING_LIST
+  ACTIVE
+  ARCHIVED
+}
+
 // A student. Guardians are linked many-to-many through StudentGuardian;
 // classes through Enrollment; comments through StudentComment.
 model Student {
@@ -113,20 +125,42 @@ model Student {
   sex         Sex?
   dateOfBirth DateTime
   image       String? // URL path under /uploads/students
+  status      StudentStatus @default(WAITING_LIST)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   guardians   StudentGuardian[]
   enrollments Enrollment[]
+  statusEvents StudentStatusEvent[]
   comments    StudentComment[]
   attendance  Attendance[]
   grades      Grade[]
   donations   StudentDonation[]
+  donationPaymentLogs DonationPaymentLog[]
   periodReportObservations PeriodReportObservation[]
   yearReportObservations   YearReportObservation[]
 
   @@index([lastName, firstName])
+  @@index([status])
   @@map("students")
+}
+
+// History of a student's lifecycle-state changes (keeps the dates + actor).
+model StudentStatusEvent {
+  id          String         @id @default(cuid())
+  studentId   String
+  fromStatus  StudentStatus?
+  toStatus    StudentStatus
+  changedById String?
+  changedAt   DateTime       @default(now())
+  note        String?
+
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  changedBy User?   @relation("StudentStatusChanger", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([changedById])
+  @@map("student_status_events")
 }
 
 // A guardian (parent/carer). Can be responsible for several students.
@@ -402,6 +436,7 @@ model AcademicYear {
 
   exams     Exam[]
   donations StudentDonation[]
+  donationPaymentLogs DonationPaymentLog[]
   periodReportObservations PeriodReportObservation[]
   yearReportObservations   YearReportObservation[]
 
@@ -555,16 +590,25 @@ model YearReportObservation {
 // Donations — guardians pay a yearly donation per student.
 //
 // - `DonationSetting` is a singleton holding the global default amount.
-// - `StudentDonation` is one row per student per year: the expected amount
-//   (defaults from the setting, overridable — some families pay less or
-//   nothing) and the single manually-updated paid amount.
-// - Balance/status are derived on read: balance = expected - paid.
+// - `StudentDonation` is one row per student per year: the expected amount and
+//   category (set when the student is assigned a class; overridable).
+// - `DonationPayment` is the payment ledger: one row per payment (amount, date,
+//   recorder, optional comment). A year's paid total is the sum of its rows.
+// - `DonationPaymentLog` audits every payment create/update/delete (actor +
+//   before/after) and survives payment deletion.
+// - Balance/status are derived on read: balance = expected − paid.
 // ---------------------------------------------------------------------------
 
 enum DonationCategory {
   FULL
   REDUCED
   EXEMPT
+}
+
+enum DonationPaymentAction {
+  CREATED
+  UPDATED
+  DELETED
 }
 
 model DonationSetting {
@@ -582,10 +626,7 @@ model StudentDonation {
   academicYearId String
   // Expected amount for this student this year (0 when exempt).
   expectedAmount Decimal          @db.Decimal(10, 2)
-  // Single paid value (partial/over allowed); balance = expected - paid.
-  paidAmount     Decimal          @default(0) @db.Decimal(10, 2)
   category       DonationCategory @default(FULL)
-  paidAt         DateTime?        @db.Date
   note           String?
   recordedById   String?
   createdAt      DateTime         @default(now())
@@ -595,9 +636,60 @@ model StudentDonation {
   // Restrict: financial history — a year with donations cannot be deleted.
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
   recordedBy   User?        @relation("DonationRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  payments     DonationPayment[]
 
   @@unique([studentId, academicYearId])
   @@index([academicYearId])
   @@index([recordedById])
   @@map("student_donations")
+}
+
+// One payment in the ledger. Belongs to a student's yearly donation (the
+// expectation must exist first).
+model DonationPayment {
+  id             String   @id @default(cuid())
+  studentId      String
+  academicYearId String
+  amount         Decimal  @db.Decimal(10, 2)
+  paidAt         DateTime @db.Date
+  note           String?
+  recordedById   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  donation   StudentDonation @relation(fields: [studentId, academicYearId], references: [studentId, academicYearId], onDelete: Cascade)
+  recordedBy User?           @relation("DonationPaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  logs       DonationPaymentLog[]
+
+  @@index([studentId, academicYearId])
+  @@index([academicYearId])
+  @@index([recordedById])
+  @@map("donation_payments")
+}
+
+// Audit trail for the payment ledger. Kept when a payment is deleted (paymentId
+// becomes null) so the history is never lost.
+model DonationPaymentLog {
+  id             String               @id @default(cuid())
+  paymentId      String?
+  studentId      String
+  academicYearId String
+  action         DonationPaymentAction
+  amountBefore   Decimal?             @db.Decimal(10, 2)
+  amountAfter    Decimal?             @db.Decimal(10, 2)
+  paidAtBefore   DateTime?            @db.Date
+  paidAtAfter    DateTime?            @db.Date
+  note           String?
+  actorId        String?
+  createdAt      DateTime             @default(now())
+
+  payment      DonationPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  actor        User?            @relation("DonationPaymentLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, academicYearId])
+  @@index([paymentId])
+  @@index([actorId])
+  @@map("donation_payment_logs")
 }
