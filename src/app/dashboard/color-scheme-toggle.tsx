@@ -2,12 +2,17 @@
 
 import {
   ActionIcon,
+  type ActionIconProps,
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
 import { IconMoon, IconSun } from "@tabler/icons-react";
 
-export function ColorSchemeToggle() {
+export function ColorSchemeToggle({
+  variant = "default",
+}: {
+  variant?: ActionIconProps["variant"];
+} = {}) {
   const { setColorScheme } = useMantineColorScheme();
   const computed = useComputedColorScheme("light", {
     getInitialValueInEffect: true,
@@ -17,7 +22,7 @@ export function ColorSchemeToggle() {
 
   return (
     <ActionIcon
-      variant="default"
+      variant={variant}
       size="lg"
       aria-label={isLight ? "Donkere modus" : "Lichte modus"}
       title={isLight ? "Donkere modus" : "Lichte modus"}

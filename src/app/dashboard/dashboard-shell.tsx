@@ -5,7 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AppShell,
+  Avatar,
   Badge,
+  Box,
   Burger,
   Button,
   Group,
@@ -25,6 +27,7 @@ import {
 } from "@tabler/icons-react";
 
 import { authClient } from "@/lib/auth-client";
+import { BrandLogo } from "@/components/brand-logo";
 import { ColorSchemeToggle } from "./color-scheme-toggle";
 
 type ShellUser = {
@@ -32,6 +35,15 @@ type ShellUser = {
   email: string;
   role: string;
 };
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
 
 export function DashboardShell({
   user,
@@ -54,28 +66,63 @@ export function DashboardShell({
 
   return (
     <AppShell
-      header={{ height: 60 }}
+      header={{ height: 64 }}
       navbar={{
-        width: 260,
+        width: 264,
         breakpoint: "sm",
         collapsed: { mobile: !opened },
       }}
       padding="md"
     >
-      <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Group>
-            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Text fw={700} size="lg">
-              Moskee
-            </Text>
+      <AppShell.Header className="mosque-header">
+        <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
+            <Burger
+              opened={opened}
+              onClick={toggle}
+              hiddenFrom="sm"
+              size="sm"
+              color="#ffffff"
+            />
+            <Box hiddenFrom="sm">
+              <BrandLogo height={40} inverted />
+            </Box>
+            <Group gap="sm" wrap="nowrap" visibleFrom="sm">
+              <BrandLogo height={38} inverted />
+              <div>
+                <Text
+                  c="#ffffff"
+                  fw={600}
+                  size="lg"
+                  lh={1.1}
+                  ff="var(--font-heading)"
+                >
+                  Moskee Sayidina Ibrahim
+                </Text>
+                <Text c="rgba(255,255,255,0.7)" size="xs">
+                  Islamitische Vereniging Kanaleneiland
+                </Text>
+              </div>
+            </Group>
           </Group>
-          <Group gap="sm">
-            <ColorSchemeToggle />
-            <Menu shadow="md" width={220} position="bottom-end">
+
+          <Group gap="sm" wrap="nowrap">
+            <ColorSchemeToggle variant="white" />
+            <Menu shadow="md" width={230} position="bottom-end">
               <Menu.Target>
-                <Button variant="subtle" color="gray">
-                  {user.name}
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  style={{ color: "#ffffff" }}
+                  leftSection={
+                    <Avatar size={26} radius="xl" color="gold" autoContrast>
+                      {initials(user.name)}
+                    </Avatar>
+                  }
+                >
+                  <Text component="span" visibleFrom="sm">
+                    {user.name}
+                  </Text>
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
@@ -93,8 +140,13 @@ export function DashboardShell({
       </AppShell.Header>
 
       <AppShell.Navbar p="md">
-        <Stack gap="xs">
-          <Badge color={isManager ? "indigo" : "gray"} variant="light">
+        <Stack gap="xs" h="100%">
+          <Badge
+            color={isManager ? "brand" : "gray"}
+            variant="light"
+            size="lg"
+            mb={4}
+          >
             {isManager ? "Beheerder" : "Docent"}
           </Badge>
           <NavLink

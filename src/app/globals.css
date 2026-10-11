@@ -5,4 +5,182 @@ body {
 
 body {
   min-height: 100%;
+  background-color: var(--mosque-cream);
+}
+
+[data-mantine-color-scheme="dark"] body {
+  background-color: #14181a;
+}
+
+:root {
+  --mosque-green: #1a6b3c;
+  --mosque-green-light: #2d8a52;
+  --mosque-green-dark: #0f3d22;
+  --mosque-green-pale: #e8f5ee;
+  --mosque-green-mid: #b8dfc9;
+  --mosque-gold: #c9a84c;
+  --mosque-cream: #faf8f4;
+  --mosque-cream-dark: #f2ede4;
+  --mosque-ink: #1e2522;
+  --mosque-ink-muted: #5a6660;
+  --mosque-shadow: 0 4px 24px rgba(26, 107, 60, 0.1);
+  --mosque-shadow-lg: 0 12px 48px rgba(26, 107, 60, 0.15);
+}
+
+/* ─── Islamic geometric hero pattern (ivke.nl) ─────────────── */
+.mosque-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cpath d='M30 5 L55 30 L30 55 L5 30 Z' stroke='%23ffffff' stroke-width='0.6'/%3E%3Ccircle cx='30' cy='30' r='10' stroke='%23ffffff' stroke-width='0.4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 60px 60px;
+}
+
+.mosque-pattern-brand {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cpath d='M30 5 L55 30 L30 55 L5 30 Z' stroke='%231a6b3c' stroke-width='0.6'/%3E%3Ccircle cx='30' cy='30' r='10' stroke='%231a6b3c' stroke-width='0.4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 60px 60px;
+}
+
+/* ─── Branded app header ───────────────────────────────────── */
+.mosque-header {
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    var(--mosque-green-dark) 0%,
+    var(--mosque-green) 55%,
+    #0d4a28 100%
+  );
+  border-bottom: none;
+}
+
+.mosque-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cpath d='M30 5 L55 30 L30 55 L5 30 Z' stroke='%23ffffff' stroke-width='0.6'/%3E%3Ccircle cx='30' cy='30' r='10' stroke='%23ffffff' stroke-width='0.4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 60px 60px;
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+.mosque-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.mosque-header-logo {
+  filter: brightness(0) invert(1);
+}
+
+/* ─── Landing hero ─────────────────────────────────────────── */
+.home-hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 3rem 1.5rem;
+  background: linear-gradient(
+    160deg,
+    #0a2e14 0%,
+    var(--mosque-green) 45%,
+    #0d4a28 100%
+  );
+}
+
+.home-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cpath d='M30 5 L55 30 L30 55 L5 30 Z' stroke='%23ffffff' stroke-width='0.6'/%3E%3Ccircle cx='30' cy='30' r='10' stroke='%23ffffff' stroke-width='0.4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 60px 60px;
+  opacity: 0.06;
+  pointer-events: none;
+}
+
+.home-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Auth split layout ────────────────────────────────────── */
+.auth-layout {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  background: var(--mosque-cream);
+}
+
+[data-mantine-color-scheme="dark"] .auth-layout {
+  background: #14181a;
+}
+
+.auth-aside {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  padding: 3.5rem;
+  color: #fff;
+  background: linear-gradient(
+    160deg,
+    #0a2e14 0%,
+    var(--mosque-green) 55%,
+    #0d4a28 100%
+  );
+}
+
+.auth-aside-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.auth-aside-photo {
+  position: absolute;
+  inset: 0;
+  object-fit: cover;
+  opacity: 0.28;
+  mix-blend-mode: luminosity;
+}
+
+.auth-aside-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(5, 25, 13, 0.55) 0%,
+    rgba(10, 45, 22, 0.65) 45%,
+    rgba(5, 20, 10, 0.85) 100%
+  );
+}
+
+.auth-aside-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cpath d='M30 5 L55 30 L30 55 L5 30 Z' stroke='%23ffffff' stroke-width='0.6'/%3E%3Ccircle cx='30' cy='30' r='10' stroke='%23ffffff' stroke-width='0.4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 60px 60px;
+}
+
+.auth-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 2rem;
+}
+
+@media (max-width: 62em) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-aside {
+    display: none;
+  }
+
+  .auth-main {
+    min-height: 100vh;
+  }
 }

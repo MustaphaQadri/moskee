@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useForm } from "@mantine/form";
 import {
   Alert,
+  Box,
   Button,
-  Center,
   Group,
   Paper,
   PasswordInput,
@@ -19,6 +19,8 @@ import { IconInfoCircle } from "@tabler/icons-react";
 
 import { changeOwnPassword } from "@/app/actions/account";
 import { authClient } from "@/lib/auth-client";
+import { AuthShell } from "@/components/auth-shell";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function ChangePasswordForm({
   forced,
@@ -66,73 +68,80 @@ export function ChangePasswordForm({
     notifications.show({
       title: "Wachtwoord bijgewerkt",
       message: "Je wachtwoord is gewijzigd.",
-      color: "green",
+      color: "brand",
     });
     router.push("/dashboard");
     router.refresh();
   });
 
   return (
-    <Center mih="100vh" p="md">
-      <Paper withBorder shadow="sm" radius="md" p="xl" w={420} maw="100%">
-        <Title order={2} mb="lg">
-          {forced ? "Nieuw wachtwoord instellen" : "Wachtwoord wijzigen"}
-        </Title>
+    <AuthShell>
+      <Stack w={420} maw="100%" gap="lg">
+        <Box hiddenFrom="md">
+          <BrandLogo height={52} />
+        </Box>
 
-        <form onSubmit={handleSubmit}>
-          <Stack>
-            {forced && (
-              <Alert
-                variant="light"
-                color="blue"
-                icon={<IconInfoCircle size={18} />}
-              >
-                Je wachtwoord is opnieuw ingesteld door een beheerder. Kies hier
-                een nieuw wachtwoord voordat je verdergaat.
-              </Alert>
-            )}
+        <div>
+          <Title order={2}>
+            {forced ? "Nieuw wachtwoord instellen" : "Wachtwoord wijzigen"}
+          </Title>
+          <Text c="dimmed" size="sm" mt={6}>
+            {email}
+          </Text>
+        </div>
 
-            <Text size="sm" c="dimmed">
-              {email}
-            </Text>
+        <Paper withBorder shadow="sm" p="xl">
+          <form onSubmit={handleSubmit}>
+            <Stack>
+              {forced && (
+                <Alert
+                  variant="light"
+                  color="brand"
+                  icon={<IconInfoCircle size={18} />}
+                >
+                  Je wachtwoord is opnieuw ingesteld door een beheerder. Kies
+                  hier een nieuw wachtwoord voordat je verdergaat.
+                </Alert>
+              )}
 
-            <PasswordInput
-              label="Huidig wachtwoord"
-              autoComplete="current-password"
-              required
-              {...form.getInputProps("currentPassword")}
-            />
-            <PasswordInput
-              label="Nieuw wachtwoord"
-              autoComplete="new-password"
-              required
-              {...form.getInputProps("newPassword")}
-            />
-            <PasswordInput
-              label="Bevestig nieuw wachtwoord"
-              autoComplete="new-password"
-              required
-              {...form.getInputProps("confirmPassword")}
-            />
+              <PasswordInput
+                label="Huidig wachtwoord"
+                autoComplete="current-password"
+                required
+                {...form.getInputProps("currentPassword")}
+              />
+              <PasswordInput
+                label="Nieuw wachtwoord"
+                autoComplete="new-password"
+                required
+                {...form.getInputProps("newPassword")}
+              />
+              <PasswordInput
+                label="Bevestig nieuw wachtwoord"
+                autoComplete="new-password"
+                required
+                {...form.getInputProps("confirmPassword")}
+              />
 
-            <Group justify="space-between" mt="xs">
-              <Button
-                variant="subtle"
-                color="gray"
-                onClick={async () => {
-                  await authClient.signOut();
-                  router.push("/sign-in");
-                }}
-              >
-                Uitloggen
-              </Button>
-              <Button type="submit" loading={loading}>
-                Opslaan
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Paper>
-    </Center>
+              <Group justify="space-between" mt="xs">
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  onClick={async () => {
+                    await authClient.signOut();
+                    router.push("/sign-in");
+                  }}
+                >
+                  Uitloggen
+                </Button>
+                <Button type="submit" loading={loading}>
+                  Opslaan
+                </Button>
+              </Group>
+            </Stack>
+          </form>
+        </Paper>
+      </Stack>
+    </AuthShell>
   );
 }
