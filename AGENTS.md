@@ -133,6 +133,7 @@ grades, donations, or reports.
 | `pnpm db:deploy`    | Apply migrations (production)                  |
 | `pnpm db:seed`      | Bootstrap the first manager account            |
 | `pnpm db:studio`    | Open Prisma Studio                             |
+| `pnpm run deploy`   | Deploy to the VPS (see `docs/deploy.md`)       |
 
 **Always run `pnpm lint` and `pnpm typecheck` after changing code.** The
 generated Prisma client has `@ts-nocheck`, so it is excluded from typecheck —

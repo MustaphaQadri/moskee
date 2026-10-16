@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, DM_Sans } from "next/font/google";
-import {
-  ColorSchemeScript,
-  MantineProvider,
-  mantineHtmlProps,
-} from "@mantine/core";
+import { MantineProvider, mantineHtmlProps } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 import "./globals.css";
 
+import { ColorSchemeScriptOnce } from "@/components/color-scheme-script";
 import { theme } from "@/theme";
 
 const heading = Cormorant_Garamond({
@@ -48,7 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       {...mantineHtmlProps}
     >
       <head>
-        <ColorSchemeScript defaultColorScheme="auto" />
+        <ColorSchemeScriptOnce />
       </head>
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">

@@ -1,0 +1,20 @@
+# Caddy reverse proxy.
+#
+# SITE_ADDRESS lives in /srv/moskee/.env:
+#   - "http://194.163.164.250"  -> plain HTTP on the IP (no TLS yet)
+#   - "app.example.com"         -> automatic Let's Encrypt cert + auto-renewal
+#
+# The TLS certificate is stored in the `caddy_data` volume, so renewal
+# survives container restarts and redeploys with no extra cron job.
+
+{$SITE_ADDRESS:http://localhost} {
+	encode zstd gzip
+
+	# Uploaded images are served straight from disk (shared with the app).
+	handle_path /uploads/* {
+		root * /srv/uploads
+		file_server
+	}
+
+	reverse_proxy app:3000
+}

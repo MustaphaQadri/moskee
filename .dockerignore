@@ -1,0 +1,27 @@
+# --- Build artifacts / dependencies (rebuilt inside the image) ---
+node_modules
+.next
+out
+*.tsbuildinfo
+
+# --- Git / editor ---
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# --- Secrets and local overrides (never baked into the image) ---
+.env
+.env.*
+!.env.production.example
+!.env.example
+
+# --- Runtime-uploaded files (persisted on the host, not in the image) ---
+public/uploads
+
+# --- Deployment-only files (not needed inside the image) ---
+deploy.sh
+docker-compose.yml
+Caddyfile
+docs
