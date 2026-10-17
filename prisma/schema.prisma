@@ -52,6 +52,7 @@ model User {
   donationPaymentLogs DonationPaymentLog[] @relation("DonationPaymentLogActor")
   recordedPeriodReportObservations PeriodReportObservation[] @relation("PeriodReportObservationRecorder")
   recordedYearReportObservations   YearReportObservation[]   @relation("YearReportObservationRecorder")
+  createdRegistrationTokens        GuardianRegistrationToken[] @relation("RegistrationTokenCreator")
 }
 
 model Session {
@@ -181,9 +182,41 @@ model Guardian {
 
   children StudentGuardian[]
   comments GuardianComment[]
+  registrationTokens GuardianRegistrationToken[]
 
   @@index([lastName, firstName])
   @@map("guardians")
+}
+
+// A one-time, expiring self-registration link for a guardian. The manager
+// generates it on the guardian detail page and sends the URL to the parent;
+// the parent fills in their own data and adds children. `token` is stored
+// readable so an unused link can be shown again on the guardian page.
+model GuardianRegistrationToken {
+  id          String    @id @default(cuid())
+  guardianId  String
+  token       String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  guardian  Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("RegistrationTokenCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([guardianId])
+  @@map("guardian_registration_tokens")
+}
+
+// Singleton settings for the self-registration flow. Validity applies to links
+// created after the change (the expiry date is snapshotted on the token).
+model RegistrationSetting {
+  id               String   @id @default("default")
+  linkValidityDays Int      @default(30)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("registration_settings")
 }
 
 // Join table: student <-> guardian. `relation` describes the link itself

@@ -139,6 +139,10 @@ grades, donations, or reports.
 generated Prisma client has `@ts-nocheck`, so it is excluded from typecheck —
 but our own code is not.
 
+**Never deploy (`pnpm run deploy`, SSH to the VPS, etc.) unless the user
+explicitly asks for it.** Make and verify changes locally; wait for the
+deploy request.
+
 ## Definition of done
 1. Feature works end-to-end with a real database.
 2. Auth + authorization verified for every new route/action.

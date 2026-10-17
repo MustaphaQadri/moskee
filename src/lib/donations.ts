@@ -52,6 +52,10 @@ export type StudentDonationDTO = {
 export type DonationReportRowDTO = StudentDonationDTO & {
   firstName: string;
   lastName: string;
+  // Donation and education numbers of the linked guardians ("vader/moeder"),
+  // used to look up all children of the same family in the donations overview.
+  guardianDonationNumbers: string[];
+  guardianEducationNumbers: string[];
 };
 
 export type DonationReportDTO = {
@@ -176,15 +180,24 @@ export async function getDonationReport(params: {
   ]);
   if (!academicYear) return null;
 
+  const studentSelect = {
+    id: true,
+    firstName: true,
+    lastName: true,
+    guardians: {
+      select: {
+        guardian: {
+          select: { donationNumber: true, educationNumber: true },
+        },
+      },
+    },
+  } as const;
+
   const students = params.classId
     ? (
         await prisma.enrollment.findMany({
           where: { classId: params.classId, status: "active" },
-          select: {
-            student: {
-              select: { id: true, firstName: true, lastName: true },
-            },
-          },
+          select: { student: { select: studentSelect } },
           orderBy: [
             { student: { lastName: "asc" } },
             { student: { firstName: "asc" } },
@@ -192,7 +205,7 @@ export async function getDonationReport(params: {
         })
       ).map((enrollment) => enrollment.student)
     : await prisma.student.findMany({
-        select: { id: true, firstName: true, lastName: true },
+        select: studentSelect,
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       });
 
@@ -230,6 +243,12 @@ export async function getDonationReport(params: {
       paymentCount: existing?.payments.length ?? 0,
       firstName: student.firstName,
       lastName: student.lastName,
+      guardianDonationNumbers: student.guardians
+        .map((link) => link.guardian.donationNumber)
+        .filter((value): value is string => Boolean(value)),
+      guardianEducationNumbers: student.guardians
+        .map((link) => link.guardian.educationNumber)
+        .filter((value): value is string => Boolean(value)),
     };
   });
 

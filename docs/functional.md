@@ -80,6 +80,13 @@ Moskee manages a small weekend school:
   list) and **Leerlingen** (student list, showing each student's class, linked
   guardians and lifecycle state). The student list can be filtered by state
   (waiting list / active / archived).
+- Managers can generate a **self-registration link** per guardian from the
+  guardian detail page. The parent opens the link without logging in, completes
+  their own details (**email, phone, address and donation number are required**)
+  and adds one or more children. The link is **single-use**, expires after a
+  configurable number of days (default 30, set under **Beheer → Registratie**),
+  and generating a new link revokes the previous one. The public form has no
+  photo upload; a manager can add photos later.
 
 ### 2. Classes & scheduling
 

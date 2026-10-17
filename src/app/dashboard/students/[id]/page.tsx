@@ -173,9 +173,18 @@ export default async function StudentDetailPage({
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             {student.guardians.map((guardian) => (
               <div key={guardian.id}>
-                <Anchor component="a" href={`/dashboard/guardians/${guardian.id}`}>
-                  {guardian.firstName} {guardian.lastName}
-                </Anchor>
+                {staff.isTeacher ? (
+                  <Text fw={500}>
+                    {guardian.firstName} {guardian.lastName}
+                  </Text>
+                ) : (
+                  <Anchor
+                    component="a"
+                    href={`/dashboard/guardians/${guardian.id}`}
+                  >
+                    {guardian.firstName} {guardian.lastName}
+                  </Anchor>
+                )}
                 {guardian.relation && (
                   <Text size="sm" c="dimmed">
                     {guardian.relation}

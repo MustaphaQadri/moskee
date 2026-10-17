@@ -2,6 +2,7 @@ import { Stack, Tabs, TabsList, TabsPanel, TabsTab, Title } from "@mantine/core"
 
 import { requireRole } from "@/lib/dal";
 import { getDonationSetting } from "@/lib/donations";
+import { getRegistrationSetting } from "@/lib/registration";
 import {
   listAcademicYears,
   listAllSubjects,
@@ -13,6 +14,7 @@ import {
 import { AcademicYearsPanel } from "./academic-years-panel";
 import { DonationsPanel } from "./donations-panel";
 import { LevelsPanel } from "./levels-panel";
+import { RegistrationPanel } from "./registration-panel";
 import { RoomsPanel } from "./rooms-panel";
 import { SessionsPanel } from "./sessions-panel";
 import { SubjectsPanel } from "./subjects-panel";
@@ -21,7 +23,7 @@ import { TermsPanel } from "./terms-panel";
 export default async function ManagePage() {
   await requireRole("manager");
 
-  const [levels, rooms, sessions, subjects, years, terms, donation] =
+  const [levels, rooms, sessions, subjects, years, terms, donation, registration] =
     await Promise.all([
       listLevels(),
       listRooms(),
@@ -30,6 +32,7 @@ export default async function ManagePage() {
       listAcademicYears(),
       listTerms(),
       getDonationSetting(),
+      getRegistrationSetting(),
     ]);
 
   return (
@@ -45,6 +48,7 @@ export default async function ManagePage() {
           <TabsTab value="years">Schooljaren</TabsTab>
           <TabsTab value="terms">Periodes</TabsTab>
           <TabsTab value="donations">Donaties</TabsTab>
+          <TabsTab value="registration">Registratie</TabsTab>
         </TabsList>
 
         <TabsPanel value="levels" pt="md">
@@ -67,6 +71,9 @@ export default async function ManagePage() {
         </TabsPanel>
         <TabsPanel value="donations" pt="md">
           <DonationsPanel defaultAmount={donation.defaultAmount} />
+        </TabsPanel>
+        <TabsPanel value="registration" pt="md">
+          <RegistrationPanel linkValidityDays={registration.linkValidityDays} />
         </TabsPanel>
       </Tabs>
     </Stack>

@@ -47,6 +47,7 @@ function emptyStudent(): StudentValues {
 export function SubscriptionForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [savingGuardian, setSavingGuardian] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const form = useForm({
@@ -58,7 +59,9 @@ export function SubscriptionForm() {
       address: "",
       donationNumber: "",
       educationNumber: "",
-      students: [emptyStudent()],
+      // Start without a student: a guardian can be registered on its own and
+      // children can be added later from the guardian detail page.
+      students: [] as StudentValues[],
     },
     validate: {
       firstName: (value) => (value.trim() ? null : "Voornaam is verplicht"),
@@ -100,6 +103,45 @@ export function SubscriptionForm() {
     router.push(`/dashboard/guardians/${result.data.guardianId}`);
     router.refresh();
   });
+
+  // Save only the guardian, without students. Children can be added afterwards
+  // from the guardian detail page.
+  async function saveGuardianOnly() {
+    const { errors } = form.validate();
+    const hasGuardianErrors = Object.keys(errors).some(
+      (key) => key !== "students" && !key.startsWith("students."),
+    );
+    if (hasGuardianErrors) {
+      return;
+    }
+
+    setSavingGuardian(true);
+    setError(null);
+
+    const result = await createGuardianWithStudents({
+      ...form.values,
+      students: [],
+    });
+    setSavingGuardian(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      notifications.show({
+        title: "Opslaan mislukt",
+        message: result.error,
+        color: "red",
+      });
+      return;
+    }
+
+    notifications.show({
+      title: "Ouder opgeslagen",
+      message: "Je kunt nu leerlingen toevoegen.",
+      color: "green",
+    });
+    router.push(`/dashboard/guardians/${result.data.guardianId}`);
+    router.refresh();
+  }
 
   return (
     <form onSubmit={handleSubmit}>
@@ -167,7 +209,10 @@ export function SubscriptionForm() {
           </Group>
 
           {form.values.students.length === 0 ? (
-            <Text c="dimmed">Nog geen leerlingen toegevoegd.</Text>
+            <Text c="dimmed">
+              Nog geen leerlingen toegevoegd. Je kunt de ouder eerst opslaan en
+              daarna leerlingen toevoegen.
+            </Text>
           ) : (
             <Stack>
               {form.values.students.map((_, index) => (
@@ -237,7 +282,18 @@ export function SubscriptionForm() {
           >
             Annuleren
           </Button>
-          <Button type="submit" loading={loading}>
+          {form.values.students.length === 0 && (
+            <Button
+              type="button"
+              variant="light"
+              onClick={saveGuardianOnly}
+              loading={savingGuardian}
+              disabled={loading}
+            >
+              Alleen ouder opslaan
+            </Button>
+          )}
+          <Button type="submit" loading={loading} disabled={savingGuardian}>
             Inschrijving opslaan
           </Button>
         </Group>

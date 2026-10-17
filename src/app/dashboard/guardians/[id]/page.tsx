@@ -22,8 +22,10 @@ import { IconArrowLeft, IconPencil } from "@tabler/icons-react";
 
 import { requireRole } from "@/lib/dal";
 import { getGuardianDetail } from "@/lib/guardians";
+import { getActiveRegistrationLink } from "@/lib/registration";
 import { EditStudentButton, AddStudentButton } from "../student-dialogs";
 import { SEX_LABELS } from "../options";
+import { RegistrationLinkButton } from "./registration-link-button";
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -53,6 +55,8 @@ export default async function GuardianDetailPage({
     notFound();
   }
 
+  const activeRegistrationLink = await getActiveRegistrationLink(guardian.id);
+
   return (
     <Stack gap="md">
       <Anchor component="a" href="/dashboard/guardians" size="sm">
@@ -71,14 +75,20 @@ export default async function GuardianDetailPage({
             Ouder / verzorger
           </Text>
         </div>
-        <Button
-          component="a"
-          href={`/dashboard/guardians/${guardian.id}/edit`}
-          variant="light"
-          leftSection={<IconPencil size={16} />}
-        >
-          Bewerken
-        </Button>
+        <Group gap="xs">
+          <RegistrationLinkButton
+            guardianId={guardian.id}
+            initialLink={activeRegistrationLink}
+          />
+          <Button
+            component="a"
+            href={`/dashboard/guardians/${guardian.id}/edit`}
+            variant="light"
+            leftSection={<IconPencil size={16} />}
+          >
+            Bewerken
+          </Button>
+        </Group>
       </Group>
 
       <Paper withBorder p="md">

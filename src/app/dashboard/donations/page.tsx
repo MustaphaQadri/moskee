@@ -59,6 +59,7 @@ function SortHeader({
   column,
   yearId,
   status,
+  search,
   sort,
   dir,
   align,
@@ -67,6 +68,7 @@ function SortHeader({
   column: SortKey;
   yearId: string;
   status: string;
+  search: string;
   sort: SortKey;
   dir: SortDir;
   align?: "right";
@@ -77,6 +79,7 @@ function SortHeader({
   const params = new URLSearchParams();
   params.set("year", yearId);
   if (status) params.set("status", status);
+  if (search) params.set("q", search);
   params.set("sort", column);
   params.set("dir", nextDir);
 
@@ -128,14 +131,28 @@ export default async function DonationsPage({
   const sortParam = params.sort;
   const sort: SortKey = isSortKey(sortParam) ? sortParam : "name";
   const dir: SortDir = params.dir === "desc" ? "desc" : "asc";
+  const search = typeof params.q === "string" ? params.q.trim() : "";
+  const needle = search.toLowerCase();
 
   const report = yearId
     ? await getDonationReport({ academicYearId: yearId })
     : null;
 
-  const rows = (report?.rows ?? []).filter((row) =>
-    status ? row.status === status : true,
-  );
+  // Same matching as the enrollments overview (first/last name contains,
+  // case-insensitive), plus the guardians' donation/education number so all
+  // children of the same family are shown.
+  const rows = (report?.rows ?? []).filter((row) => {
+    if (status && row.status !== status) return false;
+    if (!needle) return true;
+    const nameMatches =
+      row.firstName.toLowerCase().includes(needle) ||
+      row.lastName.toLowerCase().includes(needle);
+    const guardianNumberMatches = [
+      ...row.guardianDonationNumbers,
+      ...row.guardianEducationNumbers,
+    ].some((number) => number.toLowerCase().includes(needle));
+    return nameMatches || guardianNumberMatches;
+  });
 
   const sorted = sortRows(rows, dir, (row) => {
     switch (sort) {
@@ -181,6 +198,7 @@ export default async function DonationsPage({
             years={years.map((year) => ({ value: year.id, label: year.name }))}
             yearId={yearId}
             status={status}
+            search={search}
           />
 
           <SimpleGrid cols={{ base: 1, sm: 3 }}>
@@ -212,7 +230,11 @@ export default async function DonationsPage({
 
           <Card withBorder>
             {sorted.length === 0 ? (
-              <Text c="dimmed">Geen leerlingen voor deze filter.</Text>
+              <Text c="dimmed">
+                {search
+                  ? "Geen leerlingen gevonden voor deze zoekopdracht."
+                  : "Geen leerlingen voor deze filter."}
+              </Text>
             ) : (
               <TableScrollContainer minWidth={720}>
                 <Table striped highlightOnHover verticalSpacing="sm">
@@ -223,6 +245,7 @@ export default async function DonationsPage({
                         column="name"
                         yearId={yearId}
                         status={status}
+                        search={search}
                         sort={sort}
                         dir={dir}
                       />
@@ -231,6 +254,7 @@ export default async function DonationsPage({
                         column="expected"
                         yearId={yearId}
                         status={status}
+                        search={search}
                         sort={sort}
                         dir={dir}
                         align="right"
@@ -240,6 +264,7 @@ export default async function DonationsPage({
                         column="paid"
                         yearId={yearId}
                         status={status}
+                        search={search}
                         sort={sort}
                         dir={dir}
                         align="right"
@@ -249,6 +274,7 @@ export default async function DonationsPage({
                         column="balance"
                         yearId={yearId}
                         status={status}
+                        search={search}
                         sort={sort}
                         dir={dir}
                         align="right"

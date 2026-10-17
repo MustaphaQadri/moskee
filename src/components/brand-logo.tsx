@@ -1,5 +1,11 @@
 import Image from "next/image";
 
+// Intrinsic dimensions of /logo-ivk.png — used to keep the aspect ratio when
+// the logo is rendered at a fixed height (including inside flex containers,
+// where the default `align-items: stretch` would otherwise distort it).
+const LOGO_WIDTH = 1130;
+const LOGO_HEIGHT = 753;
+
 export function BrandLogo({
   height = 40,
   inverted = false,
@@ -13,11 +19,15 @@ export function BrandLogo({
     <Image
       src="/logo-ivk.png"
       alt="IVKE — Islamitische Vereniging Kanaleneiland"
-      width={1130}
-      height={753}
+      width={LOGO_WIDTH}
+      height={LOGO_HEIGHT}
       priority={priority}
       className={inverted ? "mosque-header-logo" : undefined}
-      style={{ height, width: "auto", display: "block" }}
+      style={{
+        height,
+        width: Math.round((height * LOGO_WIDTH) / LOGO_HEIGHT),
+        display: "block",
+      }}
     />
   );
 }

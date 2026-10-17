@@ -87,6 +87,20 @@ identifiers from the subscription form: `donationNumber` and `educationNumber`
 write (`requireManager`); students are created either during the guardian
 subscription or from the guardian detail view, never on their own.
 
+### Guardian registration links (`guardian_registration_tokens`)
+
+A manager generates a one-time, expiring token per guardian; the parent opens
+`/register/<token>` without a session. The token is stored readable so an unused
+link can be shown again on the guardian detail page (it contains no personal
+data). On submit the token is claimed atomically (`usedAt`) and, in the same
+transaction, the guardian row is updated and the children are created. Validity
+comes from the `RegistrationSetting` singleton
+(`registration_settings.linkValidityDays`, default 30); the expiry date is
+snapshotted on the token when it is generated. One active link per guardian:
+creating a new link deletes the previous unused one. The public server action
+never trusts a guardian id from the client — it derives it from the token.
+`/register/*` is intentionally outside the `proxy.ts` matcher.
+
 ### Attendance (`attendance`)
 
 Presence for one student, at one class meeting. A "meeting" is
@@ -252,6 +266,10 @@ donation detail.
    assignment).
 10. Every payment create/update/delete is written to `DonationPaymentLog` (actor
     + before/after values); the log survives payment deletion.
+11. A guardian registration token is single-use and expires. Submission claims it
+    atomically (`usedAt = now`, only one winner) and uses the token's
+    `guardianId`, never a client-supplied id. The public form requires email,
+    phone, address and donationNumber, and at least one child.
 
 ## Authorization
 
