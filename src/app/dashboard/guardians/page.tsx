@@ -51,19 +51,32 @@ const STUDENT_STATUS_OPTIONS = [
   { value: "ARCHIVED", label: "Gearchiveerd" },
 ] as const;
 
+const EDUCATION_FILTER_OPTIONS = [
+  { value: "", label: "Alle" },
+  { value: "with", label: "Met onderwijsNr." },
+  { value: "without", label: "Zonder onderwijsNr." },
+] as const;
+
+type EducationFilter = "" | "with" | "without";
+
 function SearchBar({
   tab,
   placeholder,
   search,
+  education = "",
 }: {
   tab: TabValue;
   placeholder: string;
   search: string;
+  education?: EducationFilter;
 }) {
   return (
     <Paper withBorder p="md">
       <form action="/dashboard/guardians" method="get">
         <input type="hidden" name="tab" value={tab} />
+        {education && (
+          <input type="hidden" name="education" value={education} />
+        )}
         <Group align="flex-end">
           <TextInput
             name="q"
@@ -79,7 +92,9 @@ function SearchBar({
           {search && (
             <Button
               component="a"
-              href={`/dashboard/guardians?tab=${tab}`}
+              href={`/dashboard/guardians?tab=${tab}${
+                education ? `&education=${education}` : ""
+              }`}
               variant="subtle"
               color="gray"
             >
@@ -97,6 +112,7 @@ function SortHeader({
   column,
   tab,
   search,
+  education = "",
   current,
   dir,
 }: {
@@ -104,6 +120,7 @@ function SortHeader({
   column: string;
   tab: TabValue;
   search: string;
+  education?: EducationFilter;
   current: string;
   dir: SortDir;
 }) {
@@ -112,6 +129,7 @@ function SortHeader({
 
   const params = new URLSearchParams({ tab });
   if (search) params.set("q", search);
+  if (education) params.set("education", education);
   params.set("sort", column);
   params.set("dir", nextDir);
 
@@ -154,9 +172,23 @@ export default async function GuardiansPage({
   const guardianSort = isGuardianSortKey(sortParam) ? sortParam : "name";
   const studentSort = isStudentSortKey(sortParam) ? sortParam : "name";
   const studentStatus = isStudentStatus(params.status) ? params.status : "";
+  const educationFilter: EducationFilter =
+    params.education === "with" || params.education === "without"
+      ? params.education
+      : "";
 
   const [guardians, students] = await Promise.all([
-    listGuardians({ search, sort: guardianSort, dir }),
+    listGuardians({
+      search,
+      sort: guardianSort,
+      dir,
+      hasEducationNumber:
+        educationFilter === "with"
+          ? true
+          : educationFilter === "without"
+            ? false
+            : undefined,
+    }),
     listStudents({
       search,
       sort: studentSort,
@@ -190,11 +222,33 @@ export default async function GuardiansPage({
               tab="guardians"
               placeholder="Naam, e-mail, telefoon of nummer"
               search={search}
+              education={educationFilter}
             />
+
+            <Group gap="xs">
+              {EDUCATION_FILTER_OPTIONS.map((option) => {
+                const pillParams = new URLSearchParams({ tab: "guardians" });
+                if (search) pillParams.set("q", search);
+                if (option.value) pillParams.set("education", option.value);
+                return (
+                  <Button
+                    key={option.value}
+                    component="a"
+                    href={`/dashboard/guardians?${pillParams.toString()}`}
+                    size="xs"
+                    variant={
+                      educationFilter === option.value ? "filled" : "default"
+                    }
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </Group>
 
             {guardians.length === 0 ? (
               <Text c="dimmed">
-                {search
+                {search || educationFilter
                   ? "Geen ouders/verzorgers gevonden."
                   : "Nog geen ouders/verzorgers geregistreerd."}
               </Text>
@@ -208,6 +262,7 @@ export default async function GuardiansPage({
                         column="name"
                         tab="guardians"
                         search={search}
+                        education={educationFilter}
                         current={guardianSort}
                         dir={dir}
                       />
@@ -216,6 +271,7 @@ export default async function GuardiansPage({
                         column="email"
                         tab="guardians"
                         search={search}
+                        education={educationFilter}
                         current={guardianSort}
                         dir={dir}
                       />
@@ -224,14 +280,16 @@ export default async function GuardiansPage({
                         column="phone"
                         tab="guardians"
                         search={search}
+                        education={educationFilter}
                         current={guardianSort}
                         dir={dir}
                       />
                       <SortHeader
-                        label="Donatienr."
+                        label="Chartnr."
                         column="donationNumber"
                         tab="guardians"
                         search={search}
+                        education={educationFilter}
                         current={guardianSort}
                         dir={dir}
                       />
@@ -240,6 +298,7 @@ export default async function GuardiansPage({
                         column="educationNumber"
                         tab="guardians"
                         search={search}
+                        education={educationFilter}
                         current={guardianSort}
                         dir={dir}
                       />
@@ -248,6 +307,7 @@ export default async function GuardiansPage({
                         column="studentCount"
                         tab="guardians"
                         search={search}
+                        education={educationFilter}
                         current={guardianSort}
                         dir={dir}
                       />

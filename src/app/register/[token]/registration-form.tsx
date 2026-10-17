@@ -74,7 +74,6 @@ export function RegistrationForm({
       phone: guardian.phone ?? "",
       address: guardian.address ?? "",
       donationNumber: guardian.donationNumber ?? "",
-      educationNumber: guardian.educationNumber ?? "",
       children: [emptyChild()],
     },
     validate: {
@@ -89,7 +88,7 @@ export function RegistrationForm({
       phone: (value) => (value.trim() ? null : "Telefoon is verplicht"),
       address: (value) => (value.trim() ? null : "Adres is verplicht"),
       donationNumber: (value) =>
-        value.trim() ? null : "Donatienummer is verplicht",
+        value.trim() ? null : "Chartnummer is verplicht",
       children: {
         firstName: (value) => (value.trim() ? null : "Voornaam is verplicht"),
         lastName: (value) => (value.trim() ? null : "Achternaam is verplicht"),
@@ -188,13 +187,9 @@ export function RegistrationForm({
                 {...form.getInputProps("phone")}
               />
               <TextInput
-                label="Donatienummer"
+                label="Chartnummer"
                 required
                 {...form.getInputProps("donationNumber")}
-              />
-              <TextInput
-                label="Onderwijsnummer"
-                {...form.getInputProps("educationNumber")}
               />
             </SimpleGrid>
             <Textarea

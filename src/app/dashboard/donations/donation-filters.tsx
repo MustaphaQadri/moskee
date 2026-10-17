@@ -79,7 +79,7 @@ export function DonationFilters({
           <TextInput
             name="q"
             label="Zoeken"
-            placeholder="Naam, donatie- of onderwijsnummer"
+            placeholder="Naam, chart- of onderwijsnummer"
             defaultValue={search}
             leftSection={<IconSearch size={16} />}
             style={{ flex: 1 }}

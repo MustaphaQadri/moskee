@@ -95,7 +95,7 @@ export default async function GuardianDetailPage({
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
           <InfoItem label="E-mailadres" value={guardian.email ?? ""} />
           <InfoItem label="Telefoon" value={guardian.phone ?? ""} />
-          <InfoItem label="Donatienummer" value={guardian.donationNumber ?? ""} />
+          <InfoItem label="Chartnummer" value={guardian.donationNumber ?? ""} />
           <InfoItem
             label="Onderwijsnummer"
             value={guardian.educationNumber ?? ""}

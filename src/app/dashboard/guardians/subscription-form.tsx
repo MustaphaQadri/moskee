@@ -58,7 +58,7 @@ export function SubscriptionForm() {
       phone: "",
       address: "",
       donationNumber: "",
-      educationNumber: "",
+      // The education number is assigned automatically on save.
       // Start without a student: a guardian can be registered on its own and
       // children can be added later from the guardian detail page.
       students: [] as StudentValues[],
@@ -178,12 +178,8 @@ export function SubscriptionForm() {
                 {...form.getInputProps("phone")}
               />
               <TextInput
-                label="Donatienummer"
+                label="Chartnummer"
                 {...form.getInputProps("donationNumber")}
-              />
-              <TextInput
-                label="Onderwijsnummer"
-                {...form.getInputProps("educationNumber")}
               />
             </SimpleGrid>
             <Textarea

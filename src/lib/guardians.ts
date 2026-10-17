@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
 import { sortRows, type SortDir } from "@/lib/sort";
+import type { Prisma } from "@/generated/prisma/client";
 import type { Sex } from "@/generated/prisma/enums";
 
 // Data access for guardians and their students. Server-only: import these in
@@ -82,21 +83,34 @@ function guardianSortValue(
 }
 
 // List/search guardians. `search` matches name, email, phone or either number.
+// `hasEducationNumber` filters on presence of the (auto-assigned) education
+// number.
 export async function listGuardians(params: {
   search?: string;
   sort?: GuardianSortKey;
   dir?: SortDir;
+  hasEducationNumber?: boolean;
 } = {}): Promise<GuardianListItemDTO[]> {
   const search = params.search?.trim();
 
-  const guardians = await prisma.guardian.findMany({
-    where: search
+  const where: Prisma.GuardianWhereInput = {
+    ...(search
       ? {
           OR: SEARCH_FIELDS.map((field) => ({
             [field]: { contains: search, mode: "insensitive" as const },
           })),
         }
-      : undefined,
+      : {}),
+    ...(params.hasEducationNumber === true
+      ? { educationNumber: { not: null } }
+      : {}),
+    ...(params.hasEducationNumber === false
+      ? { educationNumber: null }
+      : {}),
+  };
+
+  const guardians = await prisma.guardian.findMany({
+    where: Object.keys(where).length > 0 ? where : undefined,
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     select: {
       id: true,
@@ -124,6 +138,31 @@ export async function listGuardians(params: {
   return sortRows(rows, params.dir ?? "asc", (guardian) =>
     guardianSortValue(guardian, params.sort ?? "name"),
   );
+}
+
+// Smallest positive integer education number that no guardian uses yet.
+// Non-numeric values (legacy/free text) are ignored for numbering.
+export async function pickNextEducationNumber(
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<string> {
+  const rows = await db.guardian.findMany({
+    select: { educationNumber: true },
+  });
+
+  const used = new Set<number>();
+  for (const row of rows) {
+    if (!row.educationNumber) continue;
+    const value = Number(row.educationNumber);
+    if (Number.isInteger(value) && value > 0) {
+      used.add(value);
+    }
+  }
+
+  let next = 1;
+  while (used.has(next)) {
+    next += 1;
+  }
+  return String(next);
 }
 
 // One guardian with all linked students (and the relation of each link).

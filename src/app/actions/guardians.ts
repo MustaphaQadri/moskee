@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/authorization";
 import { parseDateOnly } from "@/lib/dates";
+import { pickNextEducationNumber } from "@/lib/guardians";
 
 // Manager-only management of guardians and their students. Every action
 // re-checks the role on the server. Input is validated with Zod; failures are
@@ -115,7 +116,7 @@ async function assertNumbersAvailable(
       where: { donationNumber: numbers.donationNumber, ...not },
       select: { id: true },
     });
-    if (clash) throw new ActionError("Dit donatienummer is al in gebruik");
+    if (clash) throw new ActionError("Dit chartnummer is al in gebruik");
   }
 
   if (numbers.educationNumber) {
@@ -136,6 +137,18 @@ function toError(error: unknown): string {
   return "Er ging iets mis. Probeer het opnieuw.";
 }
 
+// A unique-constraint failure on the auto-assigned education number; the
+// caller can retry with the next free number.
+function isEducationNumberConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const { code, meta } = error as { code?: string; meta?: { target?: unknown } };
+  if (code !== "P2002") return false;
+  const target = Array.isArray(meta?.target)
+    ? meta.target.join(",")
+    : String(meta?.target ?? "");
+  return target === "" || target.includes("educationNumber");
+}
+
 // Guardian subscription: create the guardian and (optionally) their students in
 // one transaction. Used by the "Inschrijven" form.
 export async function createGuardianWithStudents(
@@ -144,29 +157,51 @@ export async function createGuardianWithStudents(
   await requireManager();
   try {
     const parsed = subscriptionSchema.parse(input);
-    await assertNumbersAvailable(parsed);
-
-    const guardian = await prisma.guardian.create({
-      data: {
-        firstName: parsed.firstName,
-        lastName: parsed.lastName,
-        email: parsed.email,
-        phone: parsed.phone,
-        address: parsed.address,
-        donationNumber: parsed.donationNumber,
-        educationNumber: parsed.educationNumber,
-        children: {
-          create: parsed.students.map((student) => ({
-            relation: student.relation,
-            student: { create: studentData(student) },
-          })),
-        },
-      },
-      select: { id: true },
+    // The chart number is checked up front; the education number is assigned
+    // automatically (smallest free number) and is not part of the form.
+    await assertNumbersAvailable({
+      donationNumber: parsed.donationNumber,
+      educationNumber: null,
     });
 
+    const guardianData = {
+      firstName: parsed.firstName,
+      lastName: parsed.lastName,
+      email: parsed.email,
+      phone: parsed.phone,
+      address: parsed.address,
+      donationNumber: parsed.donationNumber,
+      children: {
+        create: parsed.students.map((student) => ({
+          relation: student.relation,
+          student: { create: studentData(student) },
+        })),
+      },
+    };
+
+    let guardianId: string | null = null;
+    // Retry on the (rare) race where two guardians get the same free number.
+    for (let attempt = 0; attempt < 5 && !guardianId; attempt += 1) {
+      const educationNumber = await pickNextEducationNumber();
+      try {
+        const guardian = await prisma.guardian.create({
+          data: { ...guardianData, educationNumber },
+          select: { id: true },
+        });
+        guardianId = guardian.id;
+      } catch (error) {
+        if (attempt < 4 && isEducationNumberConflict(error)) continue;
+        throw error;
+      }
+    }
+    if (!guardianId) {
+      throw new ActionError(
+        "Kon geen onderwijsnummer toewijzen. Probeer het opnieuw.",
+      );
+    }
+
     revalidatePath("/dashboard/guardians");
-    return { ok: true, data: { guardianId: guardian.id } };
+    return { ok: true, data: { guardianId } };
   } catch (error) {
     return { ok: false, error: toError(error) };
   }

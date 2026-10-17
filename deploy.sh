@@ -107,7 +107,10 @@ if [[ "$SYNC_UPLOADS" == "1" ]]; then
 fi
 
 info "Building the app image on the server"
-compose_remote "build app"
+# Build every service with a build section (app + the migrate/seed tools image
+# must both pick up schema/migration changes). The migrate service sits behind
+# the "tools" profile, so that profile must be enabled for the build too.
+compose_remote "--profile tools build"
 
 info "Applying database migrations"
 compose_remote "--profile tools run --rm migrate"

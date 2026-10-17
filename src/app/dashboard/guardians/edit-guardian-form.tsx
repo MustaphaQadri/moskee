@@ -104,11 +104,12 @@ export function EditGuardianForm({ guardian }: { guardian: EditableGuardian }) {
           />
           <TextInput label="Telefoon" {...form.getInputProps("phone")} />
           <TextInput
-            label="Donatienummer"
+            label="Chartnummer"
             {...form.getInputProps("donationNumber")}
           />
           <TextInput
             label="Onderwijsnummer"
+            description="Automatisch toegewezen; je kunt het aanpassen of leegmaken."
             {...form.getInputProps("educationNumber")}
           />
         </SimpleGrid>

@@ -69,7 +69,12 @@ Moskee manages a small weekend school:
   removing their last class archives them; archived students are re-activated by
   assigning a class again. Every change is timestamped with who made it
   (status history on the student detail).
-- A **guardian** has first/last name, optional email, phone, and address.
+- A **guardian** has first/last name, optional email, phone, and address. The
+  donation number is shown as **"Chartnummer"** in the UI. Every guardian gets
+  an **education number automatically**: the smallest positive integer that is
+  not in use yet (1, 2, 3, …). Managers can change or clear it on the guardian
+  edit screen; it is intentionally **not** shown in the registration forms
+  (neither the manager's "Nieuwe inschrijving" nor the parent's public form).
 - Students and guardians are linked many-to-many; each link records the
   **relation** ("mother", "father", "aunt", …). A guardian can be related
   differently to different children.
@@ -78,11 +83,12 @@ Moskee manages a small weekend school:
 - Both students and guardians can carry free-text comments from staff.
 - The **Inschrijvingen** overview has two tabs: **Ouders/verzorgers** (guardian
   list) and **Leerlingen** (student list, showing each student's class, linked
-  guardians and lifecycle state). The student list can be filtered by state
-  (waiting list / active / archived).
+  guardians and lifecycle state). The guardian list can be filtered on
+  **education number** (all / with / without); the student list can be filtered
+  by state (waiting list / active / archived).
 - Managers can generate a **self-registration link** per guardian from the
   guardian detail page. The parent opens the link without logging in, completes
-  their own details (**email, phone, address and donation number are required**)
+  their own details (**email, phone, address and chart number are required**)
   and adds one or more children. The link is **single-use**, expires after a
   configurable number of days (default 30, set under **Beheer → Registratie**),
   and generating a new link revokes the previous one. The public form has no

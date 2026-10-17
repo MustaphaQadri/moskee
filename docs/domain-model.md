@@ -81,10 +81,14 @@ slots are created by `seed.ts` (Saturday/Sunday × morning/noon/afternoon).
 ### Guardian (`guardians`)
 
 A parent/carer, linked to students through `StudentGuardian` (with a
-`relation`). Besides name/email/phone/address it carries two optional, unique
-identifiers from the subscription form: `donationNumber` and `educationNumber`
-(unique only when present — Postgres allows many NULLs). Manager-only to read or
-write (`requireManager`); students are created either during the guardian
+`relation`). Besides name/email/phone/address it carries two unique identifiers:
+`donationNumber` (label: **Chartnummer**) and `educationNumber`. The education
+number is auto-assigned on creation and for existing rows (backfill migration)
+as the smallest free positive integer; non-numeric legacy values are ignored.
+It is not shown in the registration forms, but managers can change or clear it
+on the guardian edit screen. Both columns stay nullable at the DB level (unique
+only when present — Postgres allows many NULLs). Manager-only to read or write
+(`requireManager`); students are created either during the guardian
 subscription or from the guardian detail view, never on their own.
 
 ### Guardian registration links (`guardian_registration_tokens`)
