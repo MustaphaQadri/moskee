@@ -3,8 +3,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
 import { sortRows, type SortDir } from "@/lib/sort";
+import type { PersonSearchBy } from "@/lib/search";
 import type { Prisma } from "@/generated/prisma/client";
-import type { Sex } from "@/generated/prisma/enums";
+import type { GuardianStatus, Sex } from "@/generated/prisma/enums";
 
 // Data access for guardians and their students. Server-only: import these in
 // Server Components and Server Actions, never in Client Components. Return
@@ -18,7 +19,11 @@ export type GuardianListItemDTO = {
   phone: string | null;
   donationNumber: string | null;
   educationNumber: string | null;
+  status: GuardianStatus;
+  enrolledAt: string | null; // ISO yyyy-mm-dd
+  archivedAt: string | null; // ISO yyyy-mm-dd
   studentCount: number;
+  students: { id: string; firstName: string; lastName: string }[];
 };
 
 export type GuardianStudentDTO = {
@@ -40,6 +45,9 @@ export type GuardianDetailDTO = {
   address: string | null;
   donationNumber: string | null;
   educationNumber: string | null;
+  status: GuardianStatus;
+  enrolledAt: string | null; // ISO yyyy-mm-dd
+  archivedAt: string | null; // ISO yyyy-mm-dd
   createdAt: string; // ISO
   students: GuardianStudentDTO[];
 };
@@ -47,8 +55,6 @@ export type GuardianDetailDTO = {
 const SEARCH_FIELDS = [
   "firstName",
   "lastName",
-  "email",
-  "phone",
   "donationNumber",
   "educationNumber",
 ] as const;
@@ -60,6 +66,8 @@ export const GUARDIAN_SORT_KEYS = [
   "donationNumber",
   "educationNumber",
   "studentCount",
+  "enrolledAt",
+  "archivedAt",
 ] as const;
 
 export type GuardianSortKey = (typeof GUARDIAN_SORT_KEYS)[number];
@@ -77,30 +85,45 @@ function guardianSortValue(
       return `${guardian.lastName} ${guardian.firstName}`;
     case "studentCount":
       return guardian.studentCount;
+    case "enrolledAt":
+      return guardian.enrolledAt;
+    case "archivedAt":
+      return guardian.archivedAt;
     default:
       return guardian[key];
   }
 }
 
-// List/search guardians. `search` matches name, email, phone or either number.
+// List/search guardians. `search` matches first/last name, chart number
+// (donationNumber) or education number only.
 // `hasEducationNumber` filters on presence of the (auto-assigned) education
 // number.
 export async function listGuardians(params: {
   search?: string;
+  searchBy?: PersonSearchBy;
   sort?: GuardianSortKey;
   dir?: SortDir;
   hasEducationNumber?: boolean;
+  status?: GuardianStatus;
 } = {}): Promise<GuardianListItemDTO[]> {
   const search = params.search?.trim();
+  const searchBy = params.searchBy ?? "all";
+
+  const searchWhere: Prisma.GuardianWhereInput | null = search
+    ? searchBy === "chart"
+      ? { donationNumber: { contains: search, mode: "insensitive" } }
+      : searchBy === "education"
+        ? { educationNumber: { contains: search, mode: "insensitive" } }
+        : {
+            OR: SEARCH_FIELDS.map((field) => ({
+              [field]: { contains: search, mode: "insensitive" as const },
+            })),
+          }
+    : null;
 
   const where: Prisma.GuardianWhereInput = {
-    ...(search
-      ? {
-          OR: SEARCH_FIELDS.map((field) => ({
-            [field]: { contains: search, mode: "insensitive" as const },
-          })),
-        }
-      : {}),
+    ...(params.status ? { status: params.status } : {}),
+    ...(searchWhere ?? {}),
     ...(params.hasEducationNumber === true
       ? { educationNumber: { not: null } }
       : {}),
@@ -120,20 +143,36 @@ export async function listGuardians(params: {
       phone: true,
       donationNumber: true,
       educationNumber: true,
-      _count: { select: { children: true } },
+      status: true,
+      enrolledAt: true,
+      archivedAt: true,
+      children: {
+        select: {
+          student: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+        },
+      },
     },
   });
 
-  const rows = guardians.map((guardian) => ({
-    id: guardian.id,
-    firstName: guardian.firstName,
-    lastName: guardian.lastName,
-    email: guardian.email,
-    phone: guardian.phone,
-    donationNumber: guardian.donationNumber,
-    educationNumber: guardian.educationNumber,
-    studentCount: guardian._count.children,
-  }));
+  const rows = guardians.map((guardian) => {
+    const students = guardian.children.map((link) => link.student);
+    return {
+      id: guardian.id,
+      firstName: guardian.firstName,
+      lastName: guardian.lastName,
+      email: guardian.email,
+      phone: guardian.phone,
+      donationNumber: guardian.donationNumber,
+      educationNumber: guardian.educationNumber,
+      status: guardian.status,
+      enrolledAt: toDateOnly(guardian.enrolledAt),
+      archivedAt: toDateOnly(guardian.archivedAt),
+      studentCount: students.length,
+      students,
+    };
+  });
 
   return sortRows(rows, params.dir ?? "asc", (guardian) =>
     guardianSortValue(guardian, params.sort ?? "name"),
@@ -180,6 +219,9 @@ export async function getGuardianDetail(
       address: true,
       donationNumber: true,
       educationNumber: true,
+      status: true,
+      enrolledAt: true,
+      archivedAt: true,
       createdAt: true,
       children: {
         orderBy: { student: { firstName: "asc" } },
@@ -211,6 +253,9 @@ export async function getGuardianDetail(
     address: guardian.address,
     donationNumber: guardian.donationNumber,
     educationNumber: guardian.educationNumber,
+    status: guardian.status,
+    enrolledAt: toDateOnly(guardian.enrolledAt),
+    archivedAt: toDateOnly(guardian.archivedAt),
     createdAt: guardian.createdAt.toISOString(),
     students: guardian.children.map((link) => ({
       id: link.student.id,

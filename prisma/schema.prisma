@@ -117,6 +117,13 @@ enum StudentStatus {
   ARCHIVED
 }
 
+// Lifecycle of a guardian. Archiving is a soft delete; records are permanently
+// removed after the retention period configured in RegistrationSetting.
+enum GuardianStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 // A student. Guardians are linked many-to-many through StudentGuardian;
 // classes through Enrollment; comments through StudentComment.
 model Student {
@@ -127,6 +134,10 @@ model Student {
   dateOfBirth DateTime
   image       String? // URL path under /uploads/students
   status      StudentStatus @default(WAITING_LIST)
+  // Date the student was registered (from the old system or the registration date).
+  enrolledAt  DateTime @default(now()) @db.Date
+  // Set when the student is archived; cleared when they become active again.
+  archivedAt  DateTime? @db.Date
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -143,6 +154,7 @@ model Student {
 
   @@index([lastName, firstName])
   @@index([status])
+  @@index([archivedAt])
   @@map("students")
 }
 
@@ -177,6 +189,11 @@ model Guardian {
   address         String?
   donationNumber  String?  @unique
   educationNumber String?  @unique
+  status          GuardianStatus @default(ACTIVE)
+  // Date the guardian was registered (from the old system or the registration date).
+  enrolledAt      DateTime @default(now()) @db.Date
+  // Set when the guardian is archived; used for retention cleanup.
+  archivedAt      DateTime? @db.Date
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -185,6 +202,8 @@ model Guardian {
   registrationTokens GuardianRegistrationToken[]
 
   @@index([lastName, firstName])
+  @@index([status])
+  @@index([archivedAt])
   @@map("guardians")
 }
 
@@ -213,6 +232,8 @@ model GuardianRegistrationToken {
 model RegistrationSetting {
   id               String   @id @default("default")
   linkValidityDays Int      @default(30)
+  // How long archived students/guardians are kept before permanent deletion.
+  archiveRetentionMonths Int @default(24)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

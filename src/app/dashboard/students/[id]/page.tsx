@@ -146,6 +146,10 @@ export default async function StudentDetailPage({
             <Text c="dimmed">
               Geboortedatum: {formatDate(student.dateOfBirth)}
             </Text>
+            <Text c="dimmed">Inschrijfdatum: {formatDate(student.enrolledAt)}</Text>
+            {student.status === "ARCHIVED" && (
+              <Text c="red">Gearchiveerd op: {formatDate(student.archivedAt)}</Text>
+            )}
           </div>
         </Group>
 

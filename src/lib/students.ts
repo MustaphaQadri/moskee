@@ -3,6 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
 import { sortRows, type SortDir } from "@/lib/sort";
+import type { PersonSearchBy } from "@/lib/search";
+import type { Prisma } from "@/generated/prisma/client";
 import type { Sex, StudentStatus } from "@/generated/prisma/enums";
 
 // Read side of a single student: identity, guardians, class history and the
@@ -17,16 +19,30 @@ export type StudentListItemDTO = {
   dateOfBirth: string | null;
   image: string | null;
   status: StudentStatus;
+  enrolledAt: string | null; // ISO yyyy-mm-dd
+  archivedAt: string | null; // ISO yyyy-mm-dd
   class: { id: string; name: string } | null;
   guardians: {
     id: string;
     firstName: string;
     lastName: string;
     relation: string | null;
+    donationNumber: string | null;
+    educationNumber: string | null;
   }[];
 };
 
-export const STUDENT_SORT_KEYS = ["name", "class", "guardian"] as const;
+export const STUDENT_SORT_KEYS = [
+  "name",
+  "firstName",
+  "lastName",
+  "class",
+  "guardian",
+  "donationNumber",
+  "educationNumber",
+  "enrolledAt",
+  "archivedAt",
+] as const;
 
 export type StudentSortKey = (typeof STUDENT_SORT_KEYS)[number];
 
@@ -39,38 +55,89 @@ function studentSortValue(
   key: StudentSortKey,
 ): string | number | null {
   switch (key) {
+    case "firstName":
+      return student.firstName;
+    case "lastName":
+      return student.lastName;
     case "class":
       return student.class?.name ?? null;
     case "guardian": {
       const guardian = student.guardians[0];
       return guardian ? `${guardian.lastName} ${guardian.firstName}` : null;
     }
+    case "donationNumber":
+    case "educationNumber": {
+      const guardian = student.guardians.find((item) => item[key]);
+      return guardian?.[key] ?? null;
+    }
+    case "enrolledAt":
+      return student.enrolledAt;
+    case "archivedAt":
+      return student.archivedAt;
     default:
       return `${student.lastName} ${student.firstName}`;
   }
 }
 
+export type StudentCountsDTO = {
+  total: number;
+  archived: number;
+};
+
+// Global counts for the Inschrijvingen summary, independent of the list
+// filters.
+export async function getStudentCounts(): Promise<StudentCountsDTO> {
+  const [total, archived] = await Promise.all([
+    prisma.student.count(),
+    prisma.student.count({ where: { status: "ARCHIVED" } }),
+  ]);
+  return { total, archived };
+}
+
 // List/search all students with their current class and linked guardians. Used
-// by the "Inschrijvingen" overview. `search` matches first/last name.
+// by the "Inschrijvingen" overview. `search` matches the student's first/last
+// name or a linked guardian's chart/education number.
 export async function listStudents(params: {
   search?: string;
+  searchBy?: PersonSearchBy;
   status?: StudentStatus;
   sort?: StudentSortKey;
   dir?: SortDir;
 } = {}): Promise<StudentListItemDTO[]> {
   const search = params.search?.trim();
+  const searchBy = params.searchBy ?? "all";
+
+  const guardianNumberSearch = (
+    field: "donationNumber" | "educationNumber",
+  ): Prisma.StudentWhereInput => ({
+    guardians: {
+      some: {
+        guardian: {
+          [field]: { contains: search, mode: "insensitive" as const },
+        },
+      },
+    },
+  });
+
+  const searchWhere: Prisma.StudentWhereInput | null = search
+    ? searchBy === "chart"
+      ? guardianNumberSearch("donationNumber")
+      : searchBy === "education"
+        ? guardianNumberSearch("educationNumber")
+        : {
+            OR: [
+              { firstName: { contains: search, mode: "insensitive" as const } },
+              { lastName: { contains: search, mode: "insensitive" as const } },
+              guardianNumberSearch("donationNumber"),
+              guardianNumberSearch("educationNumber"),
+            ],
+          }
+    : null;
 
   const students = await prisma.student.findMany({
     where: {
       ...(params.status ? { status: params.status } : {}),
-      ...(search
-        ? {
-            OR: [
-              { firstName: { contains: search, mode: "insensitive" as const } },
-              { lastName: { contains: search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+      ...(searchWhere ?? {}),
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     select: {
@@ -80,6 +147,8 @@ export async function listStudents(params: {
       dateOfBirth: true,
       image: true,
       status: true,
+      enrolledAt: true,
+      archivedAt: true,
       enrollments: {
         where: { status: "active" },
         take: 1,
@@ -89,7 +158,13 @@ export async function listStudents(params: {
         select: {
           relation: true,
           guardian: {
-            select: { id: true, firstName: true, lastName: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              donationNumber: true,
+              educationNumber: true,
+            },
           },
         },
       },
@@ -103,12 +178,16 @@ export async function listStudents(params: {
     dateOfBirth: toDateOnly(student.dateOfBirth),
     image: student.image,
     status: student.status,
+    enrolledAt: toDateOnly(student.enrolledAt),
+    archivedAt: toDateOnly(student.archivedAt),
     class: student.enrollments[0]?.class ?? null,
     guardians: student.guardians.map((link) => ({
       id: link.guardian.id,
       firstName: link.guardian.firstName,
       lastName: link.guardian.lastName,
       relation: link.relation,
+      donationNumber: link.guardian.donationNumber,
+      educationNumber: link.guardian.educationNumber,
     })),
   }));
 
@@ -133,6 +212,8 @@ export type StudentDetailDTO = {
   dateOfBirth: string | null;
   image: string | null;
   status: StudentStatus;
+  enrolledAt: string | null; // ISO yyyy-mm-dd
+  archivedAt: string | null; // ISO yyyy-mm-dd
   statusHistory: {
     id: string;
     fromStatus: StudentStatus | null;
@@ -189,6 +270,8 @@ export async function getStudentDetail(
       dateOfBirth: true,
       image: true,
       status: true,
+      enrolledAt: true,
+      archivedAt: true,
       statusEvents: {
         orderBy: { changedAt: "desc" },
         select: {
@@ -253,6 +336,8 @@ export async function getStudentDetail(
     dateOfBirth: toDateOnly(student.dateOfBirth),
     image: student.image,
     status: student.status,
+    enrolledAt: toDateOnly(student.enrolledAt),
+    archivedAt: toDateOnly(student.archivedAt),
     statusHistory: student.statusEvents.map((event) => ({
       id: event.id,
       fromStatus: event.fromStatus,

@@ -76,10 +76,12 @@ export default async function GuardianDetailPage({
           </Text>
         </div>
         <Group gap="xs">
-          <RegistrationLinkButton
-            guardianId={guardian.id}
-            initialLink={activeRegistrationLink}
-          />
+          {guardian.status !== "ARCHIVED" && (
+            <RegistrationLinkButton
+              guardianId={guardian.id}
+              initialLink={activeRegistrationLink}
+            />
+          )}
           <Button
             component="a"
             href={`/dashboard/guardians/${guardian.id}/edit`}
@@ -101,13 +103,25 @@ export default async function GuardianDetailPage({
             value={guardian.educationNumber ?? ""}
           />
           <InfoItem label="Adres" value={guardian.address ?? ""} />
+          <InfoItem
+            label="Inschrijfdatum"
+            value={formatDate(guardian.enrolledAt)}
+          />
+          {guardian.status === "ARCHIVED" && (
+            <InfoItem
+              label="Gearchiveerd op"
+              value={formatDate(guardian.archivedAt)}
+            />
+          )}
         </SimpleGrid>
       </Paper>
 
       <Card withBorder>
         <Group justify="space-between" mb="md">
           <Title order={4}>Leerlingen</Title>
-          <AddStudentButton guardianId={guardian.id} />
+          {guardian.status !== "ARCHIVED" && (
+            <AddStudentButton guardianId={guardian.id} />
+          )}
         </Group>
 
         {guardian.students.length === 0 ? (

@@ -63,6 +63,8 @@ erDiagram
         timestamp dateOfBirth
         text image "url under /uploads/students"
         StudentStatus status "WAITING_LIST | ACTIVE | ARCHIVED"
+        timestamp enrolledAt "DATE"
+        timestamp archivedAt "DATE, nullable"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -76,6 +78,9 @@ erDiagram
         text address
         text donationNumber UK "optional, unique when present"
         text educationNumber UK "optional, unique when present"
+        GuardianStatus status "ACTIVE | ARCHIVED"
+        timestamp enrolledAt "DATE"
+        timestamp archivedAt "DATE, nullable"
         timestamp createdAt
         timestamp updatedAt
     }

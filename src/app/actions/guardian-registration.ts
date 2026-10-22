@@ -8,10 +8,13 @@ import { requireManager } from "@/lib/authorization";
 import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
 import { parseDateOnly } from "@/lib/dates";
 import { pickNextEducationNumber } from "@/lib/guardians";
+import { purgeExpiredArchived } from "@/lib/archive";
 import {
   createRegistrationLink,
   saveRegistrationSetting,
+  MAX_ARCHIVE_RETENTION_MONTHS,
   MAX_LINK_VALIDITY_DAYS,
+  MIN_ARCHIVE_RETENTION_MONTHS,
   MIN_LINK_VALIDITY_DAYS,
   type RegistrationLinkDTO,
 } from "@/lib/registration";
@@ -66,6 +69,11 @@ const validitySchema = z.object({
     .int("Voer een heel aantal dagen in")
     .min(MIN_LINK_VALIDITY_DAYS, "Minimaal 1 dag")
     .max(MAX_LINK_VALIDITY_DAYS, "Maximaal 365 dagen"),
+  archiveRetentionMonths: z
+    .number()
+    .int("Voer een heel aantal maanden in")
+    .min(MIN_ARCHIVE_RETENTION_MONTHS, "Minimaal 1 maand")
+    .max(MAX_ARCHIVE_RETENTION_MONTHS, "Maximaal 120 maanden"),
 });
 
 // Manager-only: generate (or replace) a self-registration link.
@@ -77,10 +85,13 @@ export async function createGuardianRegistrationLink(
     const id = z.string().min(1).parse(guardianId);
     const guardian = await prisma.guardian.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!guardian) {
       throw new ActionError("Ouder/verzorger niet gevonden");
+    }
+    if (guardian.status === "ARCHIVED") {
+      throw new ActionError("Een gearchiveerde ouder/verzorger kan geen registratielink krijgen");
     }
 
     const link = await createRegistrationLink(guardian.id, session.user.id);
@@ -185,15 +196,34 @@ export async function submitGuardianRegistration(
   }
 }
 
-// Manager-only setting: how long newly generated links stay valid.
+// Manager-only settings: link validity and archive retention.
 export async function updateRegistrationSetting(
   input: unknown,
-): Promise<ActionResult<{ linkValidityDays: number }>> {
+): Promise<
+  ActionResult<{ linkValidityDays: number; archiveRetentionMonths: number }>
+> {
   await requireManager();
   try {
     const parsed = validitySchema.parse(input);
-    const setting = await saveRegistrationSetting(parsed.linkValidityDays);
+    const setting = await saveRegistrationSetting(parsed);
     return { ok: true, data: setting };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+// Permanently remove archived students/guardians whose retention period passed.
+export async function purgeArchivedRecords(): Promise<
+  ActionResult<{ students: number; guardians: number }>
+> {
+  await requireManager();
+  try {
+    const result = await purgeExpiredArchived();
+    revalidatePath("/dashboard/guardians");
+    revalidatePath("/dashboard/classes");
+    revalidatePath("/dashboard/donations");
+    revalidatePath("/dashboard/manage");
+    return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }

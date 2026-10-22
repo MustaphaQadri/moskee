@@ -7,6 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/authorization";
 import { parseDateOnly } from "@/lib/dates";
 import { pickNextEducationNumber } from "@/lib/guardians";
+import {
+  setStudentStatus,
+  withdrawActiveEnrollments,
+} from "@/lib/student-lifecycle";
 
 // Manager-only management of guardians and their students. Every action
 // re-checks the role on the server. Input is validated with Zod; failures are
@@ -86,6 +90,8 @@ const updateStudentProfileSchema = z.object({
   id: z.string().min(1),
   ...studentCoreFields,
 });
+
+const idOnlySchema = z.object({ id: z.string().min(1) });
 
 function studentData(student: {
   firstName: string;
@@ -242,9 +248,12 @@ export async function addStudentToGuardian(input: unknown): Promise<ActionResult
 
     const guardian = await prisma.guardian.findUnique({
       where: { id: parsed.guardianId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!guardian) throw new ActionError("Ouder/verzorger niet gevonden");
+    if (guardian.status === "ARCHIVED") {
+      throw new ActionError("Een gearchiveerde ouder/verzorger kan geen leerling krijgen");
+    }
 
     await prisma.studentGuardian.create({
       data: {
@@ -313,6 +322,101 @@ export async function updateStudentProfile(input: unknown): Promise<ActionResult
     revalidatePath(`/dashboard/students/${parsed.id}`);
     revalidatePath("/dashboard/guardians");
     revalidatePath("/dashboard/classes");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toError(error) };
+  }
+}
+
+// Soft-delete a student. Active class enrollments are withdrawn, the student is
+// archived and the archive date is recorded for the retention cleanup.
+export async function archiveStudent(input: unknown): Promise<ActionResult> {
+  const session = await requireManager();
+  try {
+    const parsed = idOnlySchema.parse(input);
+
+    const student = await prisma.student.findUnique({
+      where: { id: parsed.id },
+      select: { id: true },
+    });
+    if (!student) throw new ActionError("Leerling niet gevonden");
+
+    await prisma.$transaction(async (tx) => {
+      await withdrawActiveEnrollments(tx, [student.id]);
+      await setStudentStatus(
+        tx,
+        student.id,
+        "ARCHIVED",
+        session.user.id,
+        "Gearchiveerd via het inschrijvingenoverzicht",
+      );
+    });
+
+    revalidatePath("/dashboard/guardians");
+    revalidatePath(`/dashboard/students/${student.id}`);
+    revalidatePath("/dashboard/classes");
+    revalidatePath("/dashboard/donations");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toError(error) };
+  }
+}
+
+// Soft-delete a guardian together with every linked student. The records stay
+// visible under the "Gearchiveerd" filter until the retention period expires.
+export async function archiveGuardian(input: unknown): Promise<ActionResult> {
+  const session = await requireManager();
+  try {
+    const parsed = idOnlySchema.parse(input);
+
+    const guardian = await prisma.guardian.findUnique({
+      where: { id: parsed.id },
+      select: {
+        id: true,
+        status: true,
+        archivedAt: true,
+        children: { select: { studentId: true } },
+      },
+    });
+    if (!guardian) throw new ActionError("Ouder/verzorger niet gevonden");
+
+    const studentIds = guardian.children.map((link) => link.studentId);
+
+    await prisma.$transaction(async (tx) => {
+      // A registration link must not add children to an archived guardian.
+      await tx.guardianRegistrationToken.deleteMany({
+        where: { guardianId: guardian.id, usedAt: null },
+      });
+
+      if (guardian.status !== "ARCHIVED" || !guardian.archivedAt) {
+        await tx.guardian.update({
+          where: { id: guardian.id },
+          data: {
+            status: "ARCHIVED",
+            archivedAt: guardian.archivedAt ?? new Date(),
+          },
+        });
+      }
+
+      await withdrawActiveEnrollments(tx, studentIds);
+      for (const studentId of studentIds) {
+        await setStudentStatus(
+          tx,
+          studentId,
+          "ARCHIVED",
+          session.user.id,
+          "Ouder/verzorger gearchiveerd",
+        );
+      }
+    });
+
+    revalidatePath("/dashboard/guardians");
+    revalidatePath(`/dashboard/guardians/${guardian.id}`);
+    revalidatePath("/dashboard/classes");
+    revalidatePath("/dashboard/donations");
+    for (const studentId of studentIds) {
+      revalidatePath(`/dashboard/students/${studentId}`);
+    }
     return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toError(error) };

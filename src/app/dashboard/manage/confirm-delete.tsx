@@ -1,7 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { useState, type ReactNode } from "react";
+import {
+  ActionIcon,
+  Box,
+  Button,
+  Group,
+  Modal,
+  Stack,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconTrash } from "@tabler/icons-react";
 
@@ -11,10 +20,12 @@ export function ConfirmDeleteButton({
   itemName,
   onConfirm,
   description,
+  iconOnly = false,
 }: {
   itemName: string;
   onConfirm: () => Promise<boolean>;
-  description?: string;
+  description?: ReactNode;
+  iconOnly?: boolean;
 }) {
   const [opened, { open, close }] = useDisclosure(false);
   const [loading, setLoading] = useState(false);
@@ -28,24 +39,44 @@ export function ConfirmDeleteButton({
 
   return (
     <>
-      <Button
-        variant="subtle"
-        color="red"
-        size="xs"
-        leftSection={<IconTrash size={16} />}
-        onClick={open}
-      >
-        Verwijderen
-      </Button>
+      {iconOnly ? (
+        <Tooltip label="Verwijderen">
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            size="sm"
+            aria-label="Verwijderen"
+            onClick={open}
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Tooltip>
+      ) : (
+        <Button
+          variant="subtle"
+          color="red"
+          size="xs"
+          leftSection={<IconTrash size={16} />}
+          onClick={open}
+        >
+          Verwijderen
+        </Button>
+      )}
       <Modal opened={opened} onClose={close} title="Bevestigen">
         <Stack>
           <Text>
             Weet je zeker dat je <strong>{itemName}</strong> wilt verwijderen?
           </Text>
           {description && (
-            <Text size="sm" c="dimmed">
-              {description}
-            </Text>
+            <Box>
+              {typeof description === "string" ? (
+                <Text size="sm" c="dimmed">
+                  {description}
+                </Text>
+              ) : (
+                description
+              )}
+            </Box>
           )}
           <Group justify="flex-end">
             <Button variant="default" onClick={close}>

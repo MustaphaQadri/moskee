@@ -7,8 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/authorization";
 import { getDonationSetting } from "@/lib/donations";
 import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
+import { setStudentStatus } from "@/lib/student-lifecycle";
 import type { Prisma } from "@/generated/prisma/client";
-import type { StudentStatus } from "@/generated/prisma/enums";
 
 // Manager-only enrollment. A student has at most one active class: enrolling in
 // a new class automatically withdraws the previous one (a "move"). Assigning a
@@ -61,33 +61,6 @@ async function assertActiveInClass(classId: string, studentIds: string[]) {
   if (active.length !== studentIds.length) {
     throw new ActionError("Niet alle geselecteerde leerlingen zitten in deze klas");
   }
-}
-
-// Record a lifecycle-state change (no-op when already in the target state).
-async function setStudentStatus(
-  tx: Prisma.TransactionClient,
-  studentId: string,
-  toStatus: StudentStatus,
-  actorId: string,
-) {
-  const student = await tx.student.findUnique({
-    where: { id: studentId },
-    select: { status: true },
-  });
-  if (!student || student.status === toStatus) return;
-
-  await tx.student.update({
-    where: { id: studentId },
-    data: { status: toStatus },
-  });
-  await tx.studentStatusEvent.create({
-    data: {
-      studentId,
-      fromStatus: student.status,
-      toStatus,
-      changedById: actorId,
-    },
-  });
 }
 
 // After a class is withdrawn, archive any student left without a class.

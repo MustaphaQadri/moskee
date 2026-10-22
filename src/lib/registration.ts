@@ -13,8 +13,14 @@ const REGISTRATION_SETTING_ID = "default";
 export const DEFAULT_LINK_VALIDITY_DAYS = 30;
 export const MIN_LINK_VALIDITY_DAYS = 1;
 export const MAX_LINK_VALIDITY_DAYS = 365;
+export const DEFAULT_ARCHIVE_RETENTION_MONTHS = 24;
+export const MIN_ARCHIVE_RETENTION_MONTHS = 1;
+export const MAX_ARCHIVE_RETENTION_MONTHS = 120;
 
-export type RegistrationSettingDTO = { linkValidityDays: number };
+export type RegistrationSettingDTO = {
+  linkValidityDays: number;
+  archiveRetentionMonths: number;
+};
 
 export type RegistrationLinkDTO = {
   token: string;
@@ -46,23 +52,29 @@ export type RegistrationTokenResolution =
 export async function getRegistrationSetting(): Promise<RegistrationSettingDTO> {
   const setting = await prisma.registrationSetting.findUnique({
     where: { id: REGISTRATION_SETTING_ID },
-    select: { linkValidityDays: true },
+    select: { linkValidityDays: true, archiveRetentionMonths: true },
   });
   return {
     linkValidityDays: setting?.linkValidityDays ?? DEFAULT_LINK_VALIDITY_DAYS,
+    archiveRetentionMonths:
+      setting?.archiveRetentionMonths ?? DEFAULT_ARCHIVE_RETENTION_MONTHS,
   };
 }
 
-export async function saveRegistrationSetting(
-  linkValidityDays: number,
-): Promise<RegistrationSettingDTO> {
+export async function saveRegistrationSetting(input: {
+  linkValidityDays: number;
+  archiveRetentionMonths: number;
+}): Promise<RegistrationSettingDTO> {
   const setting = await prisma.registrationSetting.upsert({
     where: { id: REGISTRATION_SETTING_ID },
-    update: { linkValidityDays },
-    create: { id: REGISTRATION_SETTING_ID, linkValidityDays },
-    select: { linkValidityDays: true },
+    update: input,
+    create: { id: REGISTRATION_SETTING_ID, ...input },
+    select: { linkValidityDays: true, archiveRetentionMonths: true },
   });
-  return { linkValidityDays: setting.linkValidityDays };
+  return {
+    linkValidityDays: setting.linkValidityDays,
+    archiveRetentionMonths: setting.archiveRetentionMonths,
+  };
 }
 
 // Generate a fresh link and revoke any unused links the guardian already has.

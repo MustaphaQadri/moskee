@@ -23,6 +23,9 @@ visual schema lives in [`erd.md`](./erd.md) / [`erd.mmd`](./erd.mmd).
 | Subjects/terms/grades reads| `src/lib/grades.ts`                                             |
 | Donation reads             | `src/lib/donations.ts`                                          |
 | Student status labels      | `src/lib/student-status.ts`                                     |
+| Guardian status labels     | `src/lib/guardian-status.ts`                                    |
+| Student lifecycle helpers  | `src/lib/student-lifecycle.ts`                                  |
+| Archive cleanup            | `src/lib/archive.ts`                                            |
 | Donation status labels     | `src/lib/donation-status.ts`                                    |
 | Server Actions             | `src/app/actions/*.ts`                                          |
 
@@ -91,6 +94,11 @@ only when present — Postgres allows many NULLs). Manager-only to read or write
 (`requireManager`); students are created either during the guardian
 subscription or from the guardian detail view, never on their own.
 
+`status` (`ACTIVE | ARCHIVED`), `enrolledAt` and `archivedAt` support the soft
+delete flow. Deleting a guardian archives the guardian **and all linked
+students**; unused registration tokens are revoked. Archived guardians cannot
+get a new registration link.
+
 ### Guardian registration links (`guardian_registration_tokens`)
 
 A manager generates a one-time, expiring token per guardian; the parent opens
@@ -100,7 +108,9 @@ data). On submit the token is claimed atomically (`usedAt`) and, in the same
 transaction, the guardian row is updated and the children are created. Validity
 comes from the `RegistrationSetting` singleton
 (`registration_settings.linkValidityDays`, default 30); the expiry date is
-snapshotted on the token when it is generated. One active link per guardian:
+snapshotted on the token when it is generated. The same singleton holds
+`archiveRetentionMonths` (default **24**) for permanent archive cleanup. One
+active link per guardian:
 creating a new link deletes the previous unused one. The public server action
 never trusts a guardian id from the client — it derives it from the token.
 `/register/*` is intentionally outside the `proxy.ts` matcher.
@@ -201,12 +211,22 @@ on a report; shown on the on-screen report and on the printed A4 report.
 
 - `Student.status`: `WAITING_LIST` (default — registered, no class yet) ·
   `ACTIVE` (has an active enrollment) · `ARCHIVED` (had a class, none now).
-- Transitions happen in `src/app/actions/enrollments.ts`: assigning a class sets
-  `ACTIVE`, removing the last class archives the student, and a move keeps
-  `ACTIVE`. Registration creates students as `WAITING_LIST`.
+- Transitions are centralized in `src/lib/student-lifecycle.ts`: assigning a
+  class sets `ACTIVE`, removing the last class archives the student, and a move
+  keeps `ACTIVE`. Registration creates students as `WAITING_LIST`.
+- `enrolledAt` is the registration date (imported from `Gestart op`, otherwise
+  the creation/import date). `archivedAt` is set when the student becomes
+  `ARCHIVED` and cleared when they become active again.
+- The **Verwijderen** button in the Inschrijvingen list archives the student and
+  withdraws active enrollments. Guardian deletion archives all linked students.
 - **`StudentStatusEvent`** records each change (`fromStatus?`, `toStatus`,
   `changedById?`, `changedAt`, `note?`) so the dates + actor are kept. Shown on
   the student detail. The migration seeded one event per existing student.
+- `purgeExpiredArchived()` (`src/lib/archive.ts`) permanently deletes archived
+  students/guardians whose `archivedAt + archiveRetentionMonths` has passed. It
+  runs lazily on the Inschrijvingen page and via the manual **Nu opschonen**
+  button; the computed UI date and the purge cutoff share `addMonths()` from
+  `src/lib/dates.ts`.
 
 ### DonationSetting (`donation_settings`)
 
@@ -305,6 +325,8 @@ donation detail.
 | `StudentDonation → User`     | SetNull   | Keep the record if the recorder is removed     |
 | `StudentStatusEvent → Student` | Cascade | Lifecycle history goes with the student        |
 | `StudentStatusEvent → User`  | SetNull   | Keep the history if the actor is removed       |
+| Archived `Student` (cleanup) | Cascade | Permanent delete after the retention period    |
+| Archived `Guardian` (cleanup) | Cascade | Links/tokens/comments removed; students are purged separately |
 | `DonationPayment → StudentDonation` | Cascade | Payments belong to the year's expectation  |
 | `DonationPayment → User`     | SetNull   | Keep the record if the recorder is removed     |
 | `DonationPaymentLog → DonationPayment` | SetNull | Audit survives payment deletion       |

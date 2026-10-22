@@ -60,32 +60,54 @@ Moskee manages a small weekend school:
 
 ### 1. Students & guardians
 
-- A **student** has first/last name, optional sex (boy/girl), date of birth, and
-  an optional **photo** (added during enrollment; shown in the student detail,
-  the enrollment overview, and class rosters).
+- A **student** has first/last name, optional sex (boy/girl), date of birth, an
+  **inschrijfdatum** (registration date) and an optional **photo** (added during
+  enrollment; shown in the student detail, the enrollment overview, and class
+  rosters). The registration date comes from the old system on import and is the
+  creation date for new registrations.
 - A student has a **lifecycle state**: **waiting list** (registered, no class
   yet), **active** (has a class), or **archived** (had a class, no longer).
   New registrations start on the waiting list; assigning a class activates them,
   removing their last class archives them; archived students are re-activated by
   assigning a class again. Every change is timestamped with who made it
-  (status history on the student detail).
-- A **guardian** has first/last name, optional email, phone, and address. The
-  donation number is shown as **"Chartnummer"** in the UI. Every guardian gets
-  an **education number automatically**: the smallest positive integer that is
-  not in use yet (1, 2, 3, …). Managers can change or clear it on the guardian
-  edit screen; it is intentionally **not** shown in the registration forms
-  (neither the manager's "Nieuwe inschrijving" nor the parent's public form).
+  (status history on the student detail). Archiving records an **archivedAt**
+  date; this is the date used for the retention countdown.
+- A **guardian** has first/last name, optional email, phone, address and an
+  **inschrijfdatum**. Guardians are **active** or **archived**. The donation
+  number is shown as **"Chartnummer"** in the UI. Every guardian gets an
+  **education number automatically**: the smallest positive integer that is not
+  in use yet (1, 2, 3, …). Managers can change or clear it on the guardian edit
+  screen; it is intentionally **not** shown in the registration forms (neither
+  the manager's "Nieuwe inschrijving" nor the parent's public form).
 - Students and guardians are linked many-to-many; each link records the
   **relation** ("mother", "father", "aunt", …). A guardian can be related
   differently to different children.
 - Managers can edit a student's own data (name, sex, date of birth, photo)
   directly from the student detail page, using the same fields as enrollment.
 - Both students and guardians can carry free-text comments from staff.
-- The **Inschrijvingen** overview has two tabs: **Ouders/verzorgers** (guardian
-  list) and **Leerlingen** (student list, showing each student's class, linked
-  guardians and lifecycle state). The guardian list can be filtered on
-  **education number** (all / with / without); the student list can be filtered
-  by state (waiting list / active / archived).
+- The **Inschrijvingen** overview has two tabs: **Leerlingen** (default) and
+  **Ouders/verzorgers**. The student list shows separate first/last-name
+  columns, class, linked guardians, their **chart number** and **education
+  number**, and the **inschrijfdatum**. Both lists show **Gearchiveerd op** and a
+  computed **Verwijderdatum** only when the **Gearchiveerd** filter is selected.
+  The student list shows a summary with the total number of students and the
+  archived count. The guardian list can be filtered on **status**
+  (active / archived / all, default **active**) and on **education number**
+  (all / with / without); the student list can be filtered by state (waiting
+  list / active / archived).
+- Both search boxes have a segmented control to search **all** fields, **only
+  the chart number**, or **only the education number**. Guardian search matches
+  first/last name and those numbers; student search additionally matches a
+  linked guardian's number.
+- Each row has a **Verwijderen** button. For a student this **archives** them and
+  withdraws active class enrollments. For a guardian it archives the guardian
+  **and all linked students** (after a confirmation that lists those students).
+  Archived records are permanently deleted after the retention period.
+  **Verwijderdatum** is shown in red when the date has passed, meaning the
+  cleanup will remove the record.
+- **Beheer → Registratie** configures the archive retention (default **24
+  months**) and has a **Nu opschonen** button. Cleanup also runs automatically
+  when the Inschrijvingen overview is opened.
 - Managers can generate a **self-registration link** per guardian from the
   guardian detail page. The parent opens the link without logging in, completes
   their own details (**email, phone, address and chart number are required**)
@@ -284,6 +306,10 @@ Grades are **colour-coded green → red** in the reports and the entry sheet;
    append-edit-delete but always audited.
 8. A student has at most one active class; their lifecycle state follows from
    it (active with a class, archived without, waiting list until the first).
+9. Deleting a student archives it; deleting a guardian archives the guardian and
+   all linked students. Their **Verwijderdatum** is `archivedAt + retention
+   months`. Archived records are permanently deleted (with their history) when
+   the retention period has passed and cleanup runs.
 
 ## Not built yet / roadmap
 

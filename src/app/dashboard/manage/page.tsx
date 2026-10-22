@@ -73,7 +73,10 @@ export default async function ManagePage() {
           <DonationsPanel defaultAmount={donation.defaultAmount} />
         </TabsPanel>
         <TabsPanel value="registration" pt="md">
-          <RegistrationPanel linkValidityDays={registration.linkValidityDays} />
+          <RegistrationPanel
+            linkValidityDays={registration.linkValidityDays}
+            archiveRetentionMonths={registration.archiveRetentionMonths}
+          />
         </TabsPanel>
       </Tabs>
     </Stack>
