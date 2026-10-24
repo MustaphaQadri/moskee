@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { useForm } from "@mantine/form";
+import { useEffect, useState } from "react";
 import {
   Button,
   Group,
+  Loader,
   Modal,
-  NumberInput,
-  Radio,
+  SegmentedControl,
   Stack,
   Table,
   TableScrollContainer,
@@ -19,12 +18,25 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
-import { IconPlus } from "@tabler/icons-react";
+import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
+import { IconPlus, IconSearch } from "@tabler/icons-react";
 
-import { enrollStudent, unenrollStudent } from "@/app/actions/enrollments";
+import {
+  enrollStudent,
+  searchEnrollableStudents,
+  unenrollStudent,
+} from "@/app/actions/enrollments";
+import {
+  DonationPrompt,
+  type DonationChoice,
+} from "@/app/dashboard/donation-prompt";
 import { ConfirmDeleteButton } from "@/app/dashboard/manage/confirm-delete";
 import { useActionFeedback } from "@/app/dashboard/manage/use-action-feedback";
+import {
+  PERSON_SEARCH_OPTIONS,
+  type PersonSearchBy,
+} from "@/lib/search";
 
 export type EnrollableStudent = {
   id: string;
@@ -32,84 +44,6 @@ export type EnrollableStudent = {
   lastName: string;
   currentClass: { id: string; name: string } | null;
 };
-
-type DonationChoice = "FULL" | "REDUCED" | "EXEMPT";
-
-function euro(value: number): string {
-  return new Intl.NumberFormat("nl-NL", {
-    style: "currency",
-    currency: "EUR",
-  }).format(value);
-}
-
-function DonationPrompt({
-  student,
-  defaultAmount,
-  loading,
-  onCancel,
-  onConfirm,
-}: {
-  student: EnrollableStudent;
-  defaultAmount: number;
-  loading: boolean;
-  onCancel: () => void;
-  onConfirm: (donation: {
-    category: DonationChoice;
-    expectedAmount?: number;
-  }) => void;
-}) {
-  const form = useForm({
-    initialValues: { category: "FULL" as DonationChoice, amount: defaultAmount },
-  });
-
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        const { category, amount } = form.values;
-        onConfirm({
-          category,
-          expectedAmount: category === "REDUCED" ? Number(amount) : undefined,
-        });
-      }}
-    >
-      <Stack>
-        <Text size="sm" c="dimmed">
-          {student.firstName} {student.lastName} krijgt een klas. Stel de
-          jaarlijkse donatie in.
-        </Text>
-
-        <Radio.Group label="Type bijdrage" {...form.getInputProps("category")}>
-          <Stack gap="xs" mt="xs">
-            <Radio value="FULL" label={`Verschuldigd (${euro(defaultAmount)})`} />
-            <Radio value="REDUCED" label="Deels verschuldigd" />
-            <Radio value="EXEMPT" label="Vrijgesteld" />
-          </Stack>
-        </Radio.Group>
-
-        {form.values.category === "REDUCED" && (
-          <NumberInput
-            label="Bedrag"
-            min={0}
-            decimalScale={2}
-            fixedDecimalScale
-            prefix="€ "
-            {...form.getInputProps("amount")}
-          />
-        )}
-
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onCancel}>
-            Annuleren
-          </Button>
-          <Button type="submit" loading={loading}>
-            Toevoegen
-          </Button>
-        </Group>
-      </Stack>
-    </form>
-  );
-}
 
 export function AddStudentButton({
   classId,
@@ -122,18 +56,53 @@ export function AddStudentButton({
 }) {
   const [opened, { open, close }] = useDisclosure(false);
   const [query, setQuery] = useState("");
+  const [searchBy, setSearchBy] = useState<PersonSearchBy>("all");
+  const [results, setResults] = useState<EnrollableStudent[]>(students);
+  const [loadedKey, setLoadedKey] = useState("initial");
   const [addingId, setAddingId] = useState<string | null>(null);
   const [added, setAdded] = useState<string[]>([]);
   const [promptStudent, setPromptStudent] = useState<EnrollableStudent | null>(
     null,
   );
   const handleResult = useActionFeedback();
+  const [debouncedQuery] = useDebouncedValue(query, 300);
+  const searchKey = `${debouncedQuery.trim()}|${searchBy}`;
+  const searching = opened && loadedKey !== searchKey;
 
-  const filtered = students.filter((student) => {
-    if (added.includes(student.id)) return false;
-    const haystack = `${student.firstName} ${student.lastName}`.toLowerCase();
-    return haystack.includes(query.trim().toLowerCase());
-  });
+  useEffect(() => {
+    if (!opened) return;
+    let cancelled = false;
+    void searchEnrollableStudents({
+      classId,
+      search: debouncedQuery,
+      searchBy,
+    }).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        notifications.show({
+          title: "Zoeken mislukt",
+          message: result.error,
+          color: "red",
+        });
+        setLoadedKey(`${debouncedQuery.trim()}|${searchBy}`);
+        return;
+      }
+      setResults(result.data);
+      setLoadedKey(`${debouncedQuery.trim()}|${searchBy}`);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [opened, classId, debouncedQuery, searchBy]);
+
+  const filtered = results.filter((student) => !added.includes(student.id));
+
+  function openModal() {
+    setQuery("");
+    setSearchBy("all");
+    setResults(students);
+    open();
+  }
 
   async function add(
     student: EnrollableStudent,
@@ -163,7 +132,7 @@ export function AddStudentButton({
 
   return (
     <>
-      <Button leftSection={<IconPlus size={16} />} onClick={open}>
+      <Button leftSection={<IconPlus size={16} />} onClick={openModal}>
         Leerling toevoegen
       </Button>
 
@@ -178,15 +147,28 @@ export function AddStudentButton({
             Een leerling heeft één actieve klas. Toevoegen aan deze klas
             verplaatst de leerling automatisch.
           </Text>
-          <TextInput
-            label="Zoeken"
-            placeholder="Naam"
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
+          <Stack gap="xs">
+            <SegmentedControl
+              value={searchBy}
+              onChange={(value) => setSearchBy(value as PersonSearchBy)}
+              data={[...PERSON_SEARCH_OPTIONS]}
+              size="xs"
+              w="fit-content"
+            />
+            <TextInput
+              label="Zoeken"
+              placeholder="Naam, chartnummer of onderwijsnummer"
+              leftSection={<IconSearch size={16} />}
+              rightSection={searching ? <Loader size="xs" /> : undefined}
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+          </Stack>
 
           {filtered.length === 0 ? (
-            <Text c="dimmed">Geen leerlingen gevonden.</Text>
+            <Text c="dimmed">
+              {searching ? "Zoeken…" : "Geen leerlingen gevonden."}
+            </Text>
           ) : (
             <TableScrollContainer minWidth={420}>
               <Table striped highlightOnHover>
@@ -232,7 +214,7 @@ export function AddStudentButton({
       >
         {promptStudent && (
           <DonationPrompt
-            student={promptStudent}
+            studentName={`${promptStudent.firstName} ${promptStudent.lastName}`}
             defaultAmount={defaultDonationAmount}
             loading={addingId === promptStudent.id}
             onCancel={() => setPromptStudent(null)}

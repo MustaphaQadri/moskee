@@ -2,6 +2,8 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { toDateOnly } from "@/lib/dates";
+import type { PersonSearchBy } from "@/lib/search";
+import type { Prisma } from "@/generated/prisma/client";
 import type { Sex } from "@/generated/prisma/enums";
 
 // Read side of classes. Server-only. Teachers are scoped to their own classes;
@@ -242,26 +244,50 @@ export async function getClassDetail(
 }
 
 // Students who can be enrolled in the given class: everyone not already active
-// in it (students active elsewhere are included so they can be moved).
+// in it (students active elsewhere are included so they can be moved). Search
+// mirrors the Inschrijvingen overview: name, or a linked guardian's chart /
+// education number.
 export async function listStudentsForEnrollment(params: {
   classId: string;
   search?: string;
+  searchBy?: PersonSearchBy;
 }): Promise<EnrollableStudentDTO[]> {
   const search = params.search?.trim();
+  const searchBy = params.searchBy ?? "all";
+
+  const guardianNumberSearch = (
+    field: "donationNumber" | "educationNumber",
+  ): Prisma.StudentWhereInput => ({
+    guardians: {
+      some: {
+        guardian: {
+          [field]: { contains: search, mode: "insensitive" as const },
+        },
+      },
+    },
+  });
+
+  const searchWhere: Prisma.StudentWhereInput | null = search
+    ? searchBy === "chart"
+      ? guardianNumberSearch("donationNumber")
+      : searchBy === "education"
+        ? guardianNumberSearch("educationNumber")
+        : {
+            OR: [
+              { firstName: { contains: search, mode: "insensitive" as const } },
+              { lastName: { contains: search, mode: "insensitive" as const } },
+              guardianNumberSearch("donationNumber"),
+              guardianNumberSearch("educationNumber"),
+            ],
+          }
+    : null;
 
   const students = await prisma.student.findMany({
     where: {
       enrollments: {
         none: { status: "active", classId: params.classId },
       },
-      ...(search
-        ? {
-            OR: [
-              { firstName: { contains: search, mode: "insensitive" as const } },
-              { lastName: { contains: search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+      ...(searchWhere ?? {}),
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     take: 50,

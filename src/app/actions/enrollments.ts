@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireManager } from "@/lib/authorization";
 import { getDonationSetting } from "@/lib/donations";
+import {
+  listStudentsForEnrollment,
+  type EnrollableStudentDTO,
+} from "@/lib/classes";
 import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
 import { setStudentStatus } from "@/lib/student-lifecycle";
 import type { Prisma } from "@/generated/prisma/client";
@@ -30,6 +34,12 @@ const enrollSchema = z.object({
   studentId: z.string().min(1),
   // Present on a first-time class assignment (prompted in the UI).
   donation: donationSchema.optional(),
+});
+
+const searchEnrollableSchema = z.object({
+  classId: z.string().min(1),
+  search: z.string().max(120).optional(),
+  searchBy: z.enum(["all", "chart", "education"]).optional(),
 });
 
 const bulkRemoveSchema = z.object({
@@ -85,6 +95,22 @@ function revalidate(classId: string) {
   revalidatePath(`/dashboard/classes/${classId}`);
   revalidatePath("/dashboard/guardians");
   revalidatePath("/dashboard/donations");
+}
+
+// Manager-only search for the class roster's "add student" dialog. Searches
+// across all students (not just the initially loaded page) by name, chart
+// number or education number.
+export async function searchEnrollableStudents(
+  input: unknown,
+): Promise<ActionResult<EnrollableStudentDTO[]>> {
+  await requireManager();
+  try {
+    const parsed = searchEnrollableSchema.parse(input);
+    const students = await listStudentsForEnrollment(parsed);
+    return { ok: true, data: students };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
 }
 
 export async function enrollStudent(input: unknown): Promise<ActionResult> {

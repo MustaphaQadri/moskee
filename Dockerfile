@@ -27,9 +27,14 @@ COPY . .
 ARG DATABASE_URL="postgresql://build:build@localhost:5432/build?schema=public"
 ARG BETTER_AUTH_SECRET="build-time-placeholder-not-used-at-runtime"
 ARG BETTER_AUTH_URL="http://localhost:3000"
+# Keep Server Action IDs stable across deployments. Without a fixed key Next.js
+# generates a new one per build, so tabs opened before a deploy send unknown
+# action IDs and fail with "Failed to find Server Action".
+ARG NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=""
 ENV DATABASE_URL=$DATABASE_URL \
     BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET \
     BETTER_AUTH_URL=$BETTER_AUTH_URL \
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=$NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN pnpm db:generate && pnpm build

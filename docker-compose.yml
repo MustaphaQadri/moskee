@@ -26,6 +26,8 @@ services:
     build:
       context: .
       target: runner
+      args:
+        NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -48,6 +50,8 @@ services:
     build:
       context: .
       target: builder
+      args:
+        NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}
     profiles: ["tools"]
     env_file: .env
     depends_on:

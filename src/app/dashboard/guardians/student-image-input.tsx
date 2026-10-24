@@ -55,7 +55,8 @@ export function StudentImageInput({
   return (
     <Stack gap="xs">
       <FileInput
-        label="Foto"
+        label="Foto (optioneel)"
+        description="Optioneel, maximaal 2 MB."
         placeholder="Kies een foto"
         accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
         leftSection={<IconPhoto size={16} />}

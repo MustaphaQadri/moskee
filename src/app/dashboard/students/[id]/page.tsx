@@ -22,6 +22,8 @@ import { IconArrowLeft } from "@tabler/icons-react";
 
 import { requireStaff } from "@/lib/authorization";
 import { getStudentDetail } from "@/lib/students";
+import { listClassOptions } from "@/lib/classes";
+import { getDonationSetting } from "@/lib/donations";
 import { getStudentAttendanceDetail } from "@/lib/attendance";
 import { listAttendancePeriods } from "@/lib/grades";
 import { parseDateOnly, toDateOnly } from "@/lib/dates";
@@ -39,6 +41,8 @@ import {
 } from "@/lib/student-status";
 import { CommentsSection } from "./comments";
 import { EditStudentProfileButton } from "./edit-student-profile";
+import { MoveStudentButton } from "./move-student-button";
+import { AssignClassButton } from "./assign-class-button";
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -65,6 +69,23 @@ export default async function StudentDetailPage({
     notFound();
   }
   const studentId = student.id;
+
+  const activeEnrollment =
+    student.enrollments.find((enrollment) => enrollment.status === "active") ??
+    null;
+
+  const moveTargets =
+    !staff.isTeacher && activeEnrollment
+      ? await listClassOptions(activeEnrollment.classId)
+      : [];
+
+  const assignTargets =
+    !staff.isTeacher && !activeEnrollment ? await listClassOptions() : [];
+
+  const defaultDonationAmount =
+    !staff.isTeacher && !activeEnrollment
+      ? (await getDonationSetting()).defaultAmount
+      : 0;
 
   const query = await searchParams;
   const backTo =
@@ -204,9 +225,26 @@ export default async function StudentDetailPage({
       </Paper>
 
       <Card withBorder>
-        <Title order={5} mb="sm">
-          Klassen
-        </Title>
+        <Group justify="space-between" mb="sm">
+          <Title order={5}>Klassen</Title>
+          {!staff.isTeacher && activeEnrollment && moveTargets.length > 0 && (
+            <MoveStudentButton
+              studentId={student.id}
+              studentName={`${student.firstName} ${student.lastName}`}
+              fromClassId={activeEnrollment.classId}
+              fromClassName={activeEnrollment.className}
+              targets={moveTargets}
+            />
+          )}
+          {!staff.isTeacher && !activeEnrollment && assignTargets.length > 0 && (
+            <AssignClassButton
+              studentId={student.id}
+              studentName={`${student.firstName} ${student.lastName}`}
+              classes={assignTargets}
+              defaultDonationAmount={defaultDonationAmount}
+            />
+          )}
+        </Group>
         {student.enrollments.length === 0 ? (
           <Text c="dimmed">Nog niet in een klas ingeschreven.</Text>
         ) : (

@@ -140,6 +140,12 @@ Moskee manages a small weekend school:
 - In a class, a manager can select multiple students and **move** them to
   another class, or **remove** them from the class (they are left without a
   class and **archived**). Both actions ask for confirmation first.
+- From a student's detail page (**Klassen** block), a manager can move the
+  student's active class, or — when the student has no active class — assign
+  one (with the same yearly donation prompt as a first-time assignment).
+- The class picker's "Leerling toevoegen" search covers **all** students, not
+  just the initially loaded page, and matches first/last name or a linked
+  guardian's **Chartnummer** or **Onderwijsnummer**.
 
 ### 4. Attendance
 
