@@ -82,16 +82,18 @@ function studentSortValue(
 export type StudentCountsDTO = {
   total: number;
   archived: number;
+  waitingList: number;
 };
 
 // Global counts for the Inschrijvingen summary, independent of the list
 // filters.
 export async function getStudentCounts(): Promise<StudentCountsDTO> {
-  const [total, archived] = await Promise.all([
+  const [total, archived, waitingList] = await Promise.all([
     prisma.student.count(),
     prisma.student.count({ where: { status: "ARCHIVED" } }),
+    prisma.student.count({ where: { status: "WAITING_LIST" } }),
   ]);
-  return { total, archived };
+  return { total, archived, waitingList };
 }
 
 // List/search all students with their current class and linked guardians. Used

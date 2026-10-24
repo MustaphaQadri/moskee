@@ -40,7 +40,7 @@ Moskee manages a small weekend school:
 
 ## Dashboard
 
-- Managers see two widget groups on `/dashboard`; teachers do not.
+- Managers see the dashboard widgets on `/dashboard`; teachers do not.
 - **Donaties** — donut of the current year's expected amounts split by status
   (**Betaald / Deels betaald / Niet betaald**), showing percentages only. Only
   students with an expected amount above 0 are included; the number of
@@ -52,10 +52,17 @@ Moskee manages a small weekend school:
   of absolute counts and percentages next to it. The table is sorted from
   highest to lowest share and every row has the same colour swatch as its donut
   slice.
-- The donation and gender widgets sit side by side, with the level widget full
-  width below them. Charts use softer colours with a small gap between slices.
-  Hovering a slice (or its legend entry) highlights it and shows its label and
-  percentage in the centre.
+- **Aanwezigheid** — attendance from the current school year's start through
+  today across **all classes**, grouped as **Aanwezig**, **Te laat** (te laat +
+  erg laat) and **Afwezig** (afwezig + geoorloofd). Two modes:
+  - **Verdeling**: donut with a table of counts and percentages.
+  - **Per dag**: a line chart with one point per day that has registrations,
+    showing each status as a percentage of that day's registrations, plus a
+    legend.
+- The donation and gender widgets sit side by side, with the level and
+  attendance widgets full width below them. Charts use softer colours with a
+  small gap between slices. Hovering a slice (or its legend entry) highlights it
+  and shows its label and percentage in the centre.
 - This is the **no active lessons** state. A later iteration will detect active
   session slots (`ClassSession.day/startTime/endTime`) and show lesson widgets
   instead.
@@ -124,8 +131,9 @@ Moskee manages a small weekend school:
   columns, class, linked guardians, their **chart number** and **education
   number**, and the **inschrijfdatum**. Both lists show **Gearchiveerd op** and a
   computed **Verwijderdatum** only when the **Gearchiveerd** filter is selected.
-  The student list shows a summary with the total number of students and the
-  archived count. The guardian list can be filtered on **status**
+  The student list shows a summary with the total number of students, the
+  waiting-list count and the archived count. The guardian list can be filtered
+  on **status**
   (active / archived / all, default **active**) and on **education number**
   (all / with / without); the student list can be filtered by state (waiting
   list / active / archived).

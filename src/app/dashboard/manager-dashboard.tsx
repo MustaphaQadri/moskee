@@ -20,6 +20,7 @@ import {
 
 import { PieChart, type PieSlice } from "@/components/pie-chart";
 import {
+  getAttendanceDashboard,
   getDonationDashboardSummary,
   getStudentGenderDistribution,
   getStudentLevelDistribution,
@@ -27,6 +28,7 @@ import {
   type StudentGenderDistributionDTO,
   type StudentLevelDistributionDTO,
 } from "@/lib/dashboard";
+import { AttendanceWidget } from "./attendance-widget";
 import {
   DONATION_COLORS,
   DONATION_STATUS_LABELS,
@@ -304,10 +306,11 @@ function StudentLevelWidget({
 // Static "no active lessons" dashboard for now. A later iteration will detect
 // active ClassSession times and render an active-lessons widget set instead.
 export async function ManagerDashboard() {
-  const [donations, gender, distribution] = await Promise.all([
+  const [donations, gender, distribution, attendance] = await Promise.all([
     getDonationDashboardSummary(),
     getStudentGenderDistribution(),
     getStudentLevelDistribution(),
+    getAttendanceDashboard(),
   ]);
 
   return (
@@ -320,6 +323,9 @@ export async function ManagerDashboard() {
       </GridCol>
       <GridCol span={12}>
         <StudentLevelWidget distribution={distribution} />
+      </GridCol>
+      <GridCol span={12}>
+        <AttendanceWidget data={attendance} />
       </GridCol>
     </Grid>
   );

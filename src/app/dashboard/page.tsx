@@ -1,4 +1,4 @@
-import { Button, Group, Stack, Text, Title } from "@mantine/core";
+import { Stack, Text, Title } from "@mantine/core";
 
 import { requireSession } from "@/lib/dal";
 import { ManagerDashboard } from "./manager-dashboard";
@@ -12,23 +12,7 @@ export default async function DashboardPage() {
       <Title order={2}>Dashboard</Title>
       <Text c="dimmed">Welkom, {session.user.name}.</Text>
 
-      {isManager && (
-        <>
-          <Group>
-            <Button component="a" href="/dashboard/guardians">
-              Inschrijvingen
-            </Button>
-            <Button
-              component="a"
-              href="/dashboard/guardians/new"
-              variant="light"
-            >
-              Nieuwe inschrijving
-            </Button>
-          </Group>
-          <ManagerDashboard />
-        </>
-      )}
+      {isManager && <ManagerDashboard />}
     </Stack>
   );
 }

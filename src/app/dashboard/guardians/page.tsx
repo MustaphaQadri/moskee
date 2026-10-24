@@ -568,13 +568,21 @@ export default async function GuardiansPage({
 
         <TabsPanel value="students" pt="md">
           <Stack>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <SimpleGrid cols={{ base: 1, sm: 3 }}>
               <Paper withBorder p="md">
                 <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
                   Totaal leerlingen
                 </Text>
                 <Text fw={600} size="xl" c="brand">
                   {studentCounts.total}
+                </Text>
+              </Paper>
+              <Paper withBorder p="md">
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
+                  Wachtlijst
+                </Text>
+                <Text fw={600} size="xl" c="yellow.7">
+                  {studentCounts.waitingList}
                 </Text>
               </Paper>
               <Paper withBorder p="md">

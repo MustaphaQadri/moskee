@@ -1,7 +1,9 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { toDateOnly, todayDateOnly } from "@/lib/dates";
 import { getDonationReport } from "@/lib/donations";
+import type { AttendanceStatus } from "@/generated/prisma/enums";
 
 // Read side of the manager dashboard. Server-only.
 
@@ -142,5 +144,88 @@ export async function getStudentLevelDistribution(): Promise<StudentLevelDistrib
     })),
     unassigned,
     waitingList,
+  };
+}
+
+export type AttendanceDashboardDayDTO = {
+  date: string; // ISO yyyy-mm-dd
+  present: number;
+  late: number;
+  absent: number;
+};
+
+export type AttendanceDashboardDTO = {
+  academicYear: { id: string; name: string; startDate: string };
+  summary: { present: number; late: number; absent: number; total: number };
+  days: AttendanceDashboardDayDTO[];
+};
+
+function attendanceGroup(
+  status: AttendanceStatus,
+): "present" | "late" | "absent" | null {
+  switch (status) {
+    case "PRESENT":
+      return "present";
+    case "LATE":
+    case "VERY_LATE":
+      return "late";
+    case "ABSENT":
+    case "EXCUSED":
+      return "absent";
+    default:
+      return null;
+  }
+}
+
+// Attendance across all classes from the current academic year's start through
+// today. PRESENT/absent groups are derived from the five raw statuses.
+export async function getAttendanceDashboard(): Promise<AttendanceDashboardDTO | null> {
+  const academicYear = await prisma.academicYear.findFirst({
+    where: { isCurrent: true },
+    select: { id: true, name: true, startDate: true },
+  });
+  if (!academicYear?.startDate) return null;
+
+  const startDate = toDateOnly(academicYear.startDate);
+  if (!startDate) return null;
+
+  const groups = await prisma.attendance.groupBy({
+    by: ["date", "status"],
+    where: { date: { gte: academicYear.startDate, lte: todayDateOnly() } },
+    _count: { _all: true },
+  });
+
+  const summary = { present: 0, late: 0, absent: 0, total: 0 };
+  const byDate = new Map<string, AttendanceDashboardDayDTO>();
+
+  for (const group of groups) {
+    const bucket = attendanceGroup(group.status);
+    if (!bucket) continue;
+
+    const date = toDateOnly(group.date);
+    if (!date) continue;
+
+    const count = group._count._all;
+    const day = byDate.get(date) ?? {
+      date,
+      present: 0,
+      late: 0,
+      absent: 0,
+    };
+    day[bucket] += count;
+    byDate.set(date, day);
+
+    summary[bucket] += count;
+    summary.total += count;
+  }
+
+  return {
+    academicYear: {
+      id: academicYear.id,
+      name: academicYear.name,
+      startDate,
+    },
+    summary,
+    days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
