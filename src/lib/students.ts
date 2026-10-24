@@ -113,7 +113,7 @@ export async function listStudents(params: {
     guardians: {
       some: {
         guardian: {
-          [field]: { contains: search, mode: "insensitive" as const },
+          [field]: { equals: search, mode: "insensitive" as const },
         },
       },
     },

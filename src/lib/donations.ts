@@ -170,6 +170,7 @@ export async function getStudentDonation(params: {
 export async function getDonationReport(params: {
   academicYearId: string;
   classId?: string;
+  guardianId?: string;
 }): Promise<DonationReportDTO | null> {
   const [academicYear, setting] = await Promise.all([
     prisma.academicYear.findUnique({
@@ -193,21 +194,29 @@ export async function getDonationReport(params: {
     },
   } as const;
 
-  const students = params.classId
-    ? (
-        await prisma.enrollment.findMany({
-          where: { classId: params.classId, status: "active" },
-          select: { student: { select: studentSelect } },
-          orderBy: [
-            { student: { lastName: "asc" } },
-            { student: { firstName: "asc" } },
-          ],
-        })
-      ).map((enrollment) => enrollment.student)
-    : await prisma.student.findMany({
+  const students = params.guardianId
+    ? await prisma.student.findMany({
+        where: {
+          guardians: { some: { guardianId: params.guardianId } },
+        },
         select: studentSelect,
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      });
+      })
+    : params.classId
+      ? (
+          await prisma.enrollment.findMany({
+            where: { classId: params.classId, status: "active" },
+            select: { student: { select: studentSelect } },
+            orderBy: [
+              { student: { lastName: "asc" } },
+              { student: { firstName: "asc" } },
+            ],
+          })
+        ).map((enrollment) => enrollment.student)
+      : await prisma.student.findMany({
+          select: studentSelect,
+          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+        });
 
   const donations = await prisma.studentDonation.findMany({
     where: {
@@ -277,6 +286,39 @@ export async function getDonationReport(params: {
     defaultAmount: setting.defaultAmount,
     rows,
     totals,
+  };
+}
+
+export type GuardianDonationOverviewDTO = {
+  academicYear: { id: string; name: string };
+  defaultAmount: number;
+  rows: DonationReportRowDTO[];
+  totals: DonationReportDTO["totals"];
+};
+
+// Current-year donation totals for every student linked to a guardian. Uses the
+// same fallbacks as the donations overview (students without a row get the
+// global default and paid 0).
+export async function getGuardianDonationOverview(
+  guardianId: string,
+): Promise<GuardianDonationOverviewDTO | null> {
+  const currentYear = await prisma.academicYear.findFirst({
+    where: { isCurrent: true },
+    select: { id: true },
+  });
+  if (!currentYear) return null;
+
+  const report = await getDonationReport({
+    academicYearId: currentYear.id,
+    guardianId,
+  });
+  if (!report) return null;
+
+  return {
+    academicYear: report.academicYear,
+    defaultAmount: report.defaultAmount,
+    rows: report.rows,
+    totals: report.totals,
   };
 }
 

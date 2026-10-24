@@ -294,6 +294,9 @@ donation detail.
     atomically (`usedAt = now`, only one winner) and uses the token's
     `guardianId`, never a client-supplied id. The public form requires email,
     phone, address and donationNumber, and at least one child.
+12. A guardian's status follows their children: archived when every linked child
+    is archived, active again when at least one child is not archived. Synced by
+    `syncGuardianStatusesForStudents` whenever a student's status changes.
 
 ## Authorization
 
@@ -393,12 +396,17 @@ term/year, falling back to their most recent active enrollment (see
 - **`getStudentDonation({ studentId, academicYearId })`** — one student's
   expectation with the paid total (sum of payments), balance, status and payment
   count.
-- **`getDonationReport({ academicYearId, classId? })`** — who paid and who
-  didn't: rows per student (all students, or active enrollments of `classId`)
-  with `expectedAmount`, `paidAmount` (Σ payments), `balance`, `category`,
-  `status`, `note`, `paymentCount`; plus `totals` (expected, collected,
-  outstanding, and counts per status). Outstanding excludes exempt students (it
-  sums only positive balances). `Decimal` values are returned as `number`.
+- **`getDonationReport({ academicYearId, classId?, guardianId? })`** — who paid
+  and who didn't: rows per student (all students, active enrollments of
+  `classId`, or students linked to `guardianId`) with `expectedAmount`,
+  `paidAmount` (Σ payments), `balance`, `category`, `status`, `note`,
+  `paymentCount`; plus `totals` (expected, collected, outstanding, and counts per
+  status). Outstanding excludes exempt students (it sums only positive
+  balances). `Decimal` values are returned as `number`.
+- **`getGuardianDonationOverview(guardianId)`** — the current school year's
+  `getDonationReport` rows + totals for every student linked to the guardian.
+  Backs the guardian detail's donation total and per-child amounts. Returns
+  `null` when no current academic year exists.
 - **`getStudentDonationHistory(studentId)`** — every year with an expectation:
   the expectation, its `payments` ledger, paid/balance/status, and the
   `DonationPaymentLog` entries. Backs the donation detail page.

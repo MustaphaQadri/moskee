@@ -6,6 +6,7 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
+import { useMounted } from "@mantine/hooks";
 import { IconMoon, IconSun } from "@tabler/icons-react";
 
 export function ColorSchemeToggle({
@@ -17,8 +18,11 @@ export function ColorSchemeToggle({
   const computed = useComputedColorScheme("light", {
     getInitialValueInEffect: true,
   });
+  const mounted = useMounted();
 
-  const isLight = computed === "light";
+  // The persisted scheme is only known in the browser. Keep the first render
+  // identical to the server output, then switch the icon after mounting.
+  const isLight = !mounted || computed === "light";
 
   return (
     <ActionIcon

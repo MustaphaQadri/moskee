@@ -261,7 +261,7 @@ export async function listStudentsForEnrollment(params: {
     guardians: {
       some: {
         guardian: {
-          [field]: { contains: search, mode: "insensitive" as const },
+          [field]: { equals: search, mode: "insensitive" as const },
         },
       },
     },

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "@mantine/form";
 import {
+  ActionIcon,
   Button,
   Group,
   Modal,
@@ -159,9 +160,9 @@ export function AddStudentButton({ guardianId }: { guardianId: string }) {
   return (
     <>
       <Button leftSection={<IconPlus size={16} />} onClick={open}>
-        Leerling toevoegen
+        Kind toevoegen
       </Button>
-      <Modal opened={opened} onClose={close} title="Leerling toevoegen" size="lg">
+      <Modal opened={opened} onClose={close} title="Kind toevoegen" size="lg">
         <StudentForm
           guardianId={guardianId}
           onSuccess={close}
@@ -183,14 +184,15 @@ export function EditStudentButton({
 
   return (
     <>
-      <Button
+      <ActionIcon
         variant="subtle"
-        size="xs"
-        leftSection={<IconPencil size={16} />}
+        size="sm"
         onClick={open}
+        aria-label={`${student.firstName} ${student.lastName} bewerken`}
+        title="Bewerken"
       >
-        Bewerken
-      </Button>
+        <IconPencil size={16} />
+      </ActionIcon>
       <Modal opened={opened} onClose={close} title="Leerling bewerken" size="lg">
         <StudentForm
           guardianId={guardianId}

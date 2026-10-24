@@ -12,6 +12,7 @@ import {
 } from "@/lib/classes";
 import { ActionError, toActionError, type ActionResult } from "@/lib/action-result";
 import { setStudentStatus } from "@/lib/student-lifecycle";
+import { syncGuardianStatusesForStudents } from "@/lib/guardian-lifecycle";
 import type { Prisma } from "@/generated/prisma/client";
 
 // Manager-only enrollment. A student has at most one active class: enrolling in
@@ -88,6 +89,8 @@ async function archiveIfNoClass(
       await setStudentStatus(tx, studentId, "ARCHIVED", actorId);
     }
   }
+
+  await syncGuardianStatusesForStudents(tx, studentIds);
 }
 
 function revalidate(classId: string) {
@@ -167,6 +170,7 @@ export async function enrollStudent(input: unknown): Promise<ActionResult> {
       });
 
       await setStudentStatus(tx, parsed.studentId, "ACTIVE", session.user.id);
+      await syncGuardianStatusesForStudents(tx, [parsed.studentId]);
 
       // First-time assignment: create the yearly donation expectation once.
       if (parsed.donation) {

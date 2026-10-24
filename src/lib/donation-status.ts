@@ -19,6 +19,14 @@ export const DONATION_STATUS_COLORS: Record<DonationStatus, string> = {
   EXEMPT: "gray",
 };
 
+// CSS colors for chart swatches / strokes.
+export const DONATION_COLORS: Record<DonationStatus, string> = {
+  PAID: "var(--mantine-color-green-5)",
+  PARTIAL: "var(--mantine-color-orange-5)",
+  UNPAID: "var(--mantine-color-red-5)",
+  EXEMPT: "var(--mantine-color-gray-4)",
+};
+
 export const DONATION_CATEGORY_LABELS: Record<DonationCategory, string> = {
   FULL: "Verschuldigd",
   REDUCED: "Deels verschuldigd",

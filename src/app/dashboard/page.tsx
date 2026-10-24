@@ -1,6 +1,7 @@
 import { Button, Group, Stack, Text, Title } from "@mantine/core";
 
 import { requireSession } from "@/lib/dal";
+import { ManagerDashboard } from "./manager-dashboard";
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -12,18 +13,21 @@ export default async function DashboardPage() {
       <Text c="dimmed">Welkom, {session.user.name}.</Text>
 
       {isManager && (
-        <Group>
-          <Button component="a" href="/dashboard/guardians">
-            Inschrijvingen
-          </Button>
-          <Button
-            component="a"
-            href="/dashboard/guardians/new"
-            variant="light"
-          >
-            Nieuwe inschrijving
-          </Button>
-        </Group>
+        <>
+          <Group>
+            <Button component="a" href="/dashboard/guardians">
+              Inschrijvingen
+            </Button>
+            <Button
+              component="a"
+              href="/dashboard/guardians/new"
+              variant="light"
+            >
+              Nieuwe inschrijving
+            </Button>
+          </Group>
+          <ManagerDashboard />
+        </>
       )}
     </Stack>
   );

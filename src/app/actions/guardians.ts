@@ -11,6 +11,7 @@ import {
   setStudentStatus,
   withdrawActiveEnrollments,
 } from "@/lib/student-lifecycle";
+import { syncGuardianStatusesForStudents } from "@/lib/guardian-lifecycle";
 
 // Manager-only management of guardians and their students. Every action
 // re-checks the role on the server. Input is validated with Zod; failures are
@@ -28,7 +29,7 @@ function optionalText(max: number) {
     .string()
     .trim()
     .max(max)
-    .optional()
+    .nullish()
     .transform((value) => (value ? value : null));
 }
 
@@ -39,7 +40,7 @@ const guardianFields = {
     .string()
     .trim()
     .max(200)
-    .optional()
+    .nullish()
     .transform((value) => (value ? value : null))
     .refine((value) => value === null || z.string().email().safeParse(value).success, {
       message: "Ongeldig e-mailadres",
@@ -350,6 +351,7 @@ export async function archiveStudent(input: unknown): Promise<ActionResult> {
         session.user.id,
         "Gearchiveerd via het inschrijvingenoverzicht",
       );
+      await syncGuardianStatusesForStudents(tx, [student.id]);
     });
 
     revalidatePath("/dashboard/guardians");
@@ -408,6 +410,7 @@ export async function archiveGuardian(input: unknown): Promise<ActionResult> {
           "Ouder/verzorger gearchiveerd",
         );
       }
+      await syncGuardianStatusesForStudents(tx, studentIds);
     });
 
     revalidatePath("/dashboard/guardians");

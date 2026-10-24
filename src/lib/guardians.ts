@@ -52,13 +52,6 @@ export type GuardianDetailDTO = {
   students: GuardianStudentDTO[];
 };
 
-const SEARCH_FIELDS = [
-  "firstName",
-  "lastName",
-  "donationNumber",
-  "educationNumber",
-] as const;
-
 export const GUARDIAN_SORT_KEYS = [
   "name",
   "email",
@@ -94,8 +87,8 @@ function guardianSortValue(
   }
 }
 
-// List/search guardians. `search` matches first/last name, chart number
-// (donationNumber) or education number only.
+// List/search guardians. `search` matches first/last name partially, and chart
+// number (donationNumber) / education number exactly.
 // `hasEducationNumber` filters on presence of the (auto-assigned) education
 // number.
 export async function listGuardians(params: {
@@ -111,13 +104,16 @@ export async function listGuardians(params: {
 
   const searchWhere: Prisma.GuardianWhereInput | null = search
     ? searchBy === "chart"
-      ? { donationNumber: { contains: search, mode: "insensitive" } }
+      ? { donationNumber: { equals: search, mode: "insensitive" } }
       : searchBy === "education"
-        ? { educationNumber: { contains: search, mode: "insensitive" } }
+        ? { educationNumber: { equals: search, mode: "insensitive" } }
         : {
-            OR: SEARCH_FIELDS.map((field) => ({
-              [field]: { contains: search, mode: "insensitive" as const },
-            })),
+            OR: [
+              { firstName: { contains: search, mode: "insensitive" as const } },
+              { lastName: { contains: search, mode: "insensitive" as const } },
+              { donationNumber: { equals: search, mode: "insensitive" as const } },
+              { educationNumber: { equals: search, mode: "insensitive" as const } },
+            ],
           }
     : null;
 

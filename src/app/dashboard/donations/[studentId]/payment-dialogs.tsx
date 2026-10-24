@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useForm } from "@mantine/form";
 import {
+  ActionIcon,
   Button,
   Group,
   Modal,
@@ -13,7 +14,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconPencil, IconPlus } from "@tabler/icons-react";
+import { IconCash, IconPencil, IconPlus } from "@tabler/icons-react";
 
 import {
   addDonationPayment,
@@ -112,20 +113,34 @@ export function AddPaymentButton({
   academicYearId,
   suggestedAmount,
   today,
+  iconOnly = false,
 }: {
   studentId: string;
   academicYearId: string;
   suggestedAmount: number;
   today: string;
+  iconOnly?: boolean;
 }) {
   const [opened, { open, close }] = useDisclosure(false);
   const handleResult = useActionFeedback();
 
   return (
     <>
-      <Button size="xs" leftSection={<IconPlus size={16} />} onClick={open}>
-        Betaling toevoegen
-      </Button>
+      {iconOnly ? (
+        <ActionIcon
+          variant="subtle"
+          size="sm"
+          onClick={open}
+          aria-label="Donatie toevoegen"
+          title="Donatie toevoegen"
+        >
+          <IconCash size={16} />
+        </ActionIcon>
+      ) : (
+        <Button size="xs" leftSection={<IconPlus size={16} />} onClick={open}>
+          Betaling toevoegen
+        </Button>
+      )}
       <Modal opened={opened} onClose={close} title="Betaling toevoegen">
         <PaymentForm
           amount={suggestedAmount}

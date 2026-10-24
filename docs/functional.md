@@ -38,6 +38,28 @@ Moskee manages a small weekend school:
 - Every write re-checks the role and class ownership on the server; the UI is
   never trusted.
 
+## Dashboard
+
+- Managers see two widget groups on `/dashboard`; teachers do not.
+- **Donaties** — donut of the current year's expected amounts split by status
+  (**Betaald / Deels betaald / Niet betaald**), showing percentages only. Only
+  students with an expected amount above 0 are included; the number of
+  **vrijgestelde** students is shown separately.
+- **Jongens vs meisjes** — donut showing the percentage of boys and girls among
+  all non-archived students.
+- **Leerlingen per niveau** — donut of all non-archived students by the level of
+  their active class, plus **Niet ingedeeld** and **Wachtlijst**, with a table
+  of absolute counts and percentages next to it. The table is sorted from
+  highest to lowest share and every row has the same colour swatch as its donut
+  slice.
+- The donation and gender widgets sit side by side, with the level widget full
+  width below them. Charts use softer colours with a small gap between slices.
+  Hovering a slice (or its legend entry) highlights it and shows its label and
+  percentage in the centre.
+- This is the **no active lessons** state. A later iteration will detect active
+  session slots (`ClassSession.day/startTime/endTime`) and show lesson widgets
+  instead.
+
 ## Core concepts
 
 | Term                | Meaning                                                                 |
@@ -73,7 +95,10 @@ Moskee manages a small weekend school:
   (status history on the student detail). Archiving records an **archivedAt**
   date; this is the date used for the retention countdown.
 - A **guardian** has first/last name, optional email, phone, address and an
-  **inschrijfdatum**. Guardians are **active** or **archived**. The donation
+  **inschrijfdatum**. Guardians are **active** or **archived**. Their status
+  follows their children: a guardian is archived when **all** linked children
+  are archived, and becomes active again as soon as **one** child is not
+  archived. The donation
   number is shown as **"Chartnummer"** in the UI. Every guardian gets an
   **education number automatically**: the smallest positive integer that is not
   in use yet (1, 2, 3, …). Managers can change or clear it on the guardian edit
@@ -81,7 +106,16 @@ Moskee manages a small weekend school:
   the manager's "Nieuwe inschrijving" nor the parent's public form).
 - Students and guardians are linked many-to-many; each link records the
   **relation** ("mother", "father", "aunt", …). A guardian can be related
-  differently to different children.
+  differently to different children. The guardian detail page's **Kind
+  toevoegen** action creates and links a new child; existing children are
+  listed with their donation.
+- The guardian detail info panel shows the **current year's donation total** for
+  all linked children as **paid / expected**, green when fully paid. Each child
+  row shows their own paid / expected amount; the whole donation field links to
+  that child's donation detail. The **Acties** column has icon-only **Bewerken**
+  and a money icon that opens the add-payment dialog directly.
+- Guardian names in the **Ouders/verzorgers** list are clickable and open the
+  guardian detail.
 - Managers can edit a student's own data (name, sex, date of birth, photo)
   directly from the student detail page, using the same fields as enrollment.
 - Both students and guardians can carry free-text comments from staff.
@@ -96,7 +130,8 @@ Moskee manages a small weekend school:
   (all / with / without); the student list can be filtered by state (waiting
   list / active / archived).
 - Both search boxes have a segmented control to search **all** fields, **only
-  the chart number**, or **only the education number**. Guardian search matches
+  the chart number**, or **only the education number**. Names match partially;
+  chart and education numbers must match **exactly**. Guardian search matches
   first/last name and those numbers; student search additionally matches a
   linked guardian's number.
 - Each row has a **Verwijderen** button. For a student this **archives** them and

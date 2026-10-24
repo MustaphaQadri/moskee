@@ -499,7 +499,13 @@ export default async function GuardiansPage({
                       return (
                         <TableTr key={guardian.id}>
                           <TableTd>
-                            {guardian.lastName}, {guardian.firstName}
+                            <Anchor
+                              component="a"
+                              href={`/dashboard/guardians/${guardian.id}`}
+                              fw={500}
+                            >
+                              {guardian.lastName}, {guardian.firstName}
+                            </Anchor>
                           </TableTd>
                           <TableTd>{guardian.email ?? "—"}</TableTd>
                           <TableTd>{guardian.phone ?? "—"}</TableTd>
